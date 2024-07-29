@@ -5,7 +5,6 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/LandingPageReact/',
   resolve: {
     alias: {
       '~bootstrap': path.resolve(__dirname, 'node_modules/bootstrap'),
