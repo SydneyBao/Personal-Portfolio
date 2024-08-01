@@ -19,7 +19,7 @@ function Home() {
 
   return (
     <>
-    <div>
+    <div id="page-top">
         <motion.h1
             className='header'
             initial="hidden"

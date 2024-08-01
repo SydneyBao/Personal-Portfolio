@@ -41,6 +41,16 @@ body {
   min-height: 100vh;
 }
 
+#page-top {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
 .bg {
   position: absolute;
   top: 0;
