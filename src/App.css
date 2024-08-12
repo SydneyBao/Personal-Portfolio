@@ -150,3 +150,8 @@ body {
   object-fit: cover;
   object-position: center;
 }
+
+.footer-ai, .footer-ai a{
+  color: black;
+  font-size: 1.3rem;
+}

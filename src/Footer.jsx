@@ -5,6 +5,7 @@ const Footer = () => {
   return (
     <footer className="bg-light py-5">
       <Container>
+        <p className='footer-ai'>Questions? Ask My personal <a href="https://gemini-chatbot-iota-five.vercel.app/" target="_blank">AI Assistant!</a></p>
         <Row className="justify-content-center">
           <Col lg={8}>
             <div className="d-flex justify-content-center">
