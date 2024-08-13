@@ -5,13 +5,15 @@ import Modal from 'react-modal';
 const thumbnails = [
   { url: '/portfolio/HeadshotNews.gif', title: 'Headshot News' },
   { url: '/portfolio/NutritionalPalThumbnail.gif', title: 'Nutritional Pal' },
-  {url: '/portfolio/InventoryManagementThumbnail.gif', title: 'Inventory Management'}
+  {url: '/portfolio/InventoryManagementThumbnail.gif', title: 'Inventory Management'},
+  {url: '/portfolio/chatbotThumbnail.gif', title: 'My AI'}
 ];
 
 const images = [
   { url: '/portfolio/HeadshotNews.gif', title: 'Headshot News' },
   { url: '/portfolio/NutritionalPal.gif', title: 'Nutritional Pal' },
-  {url: '/portfolio/InventoryManagement.gif', title: 'Inventory Management'}
+  {url: '/portfolio/InventoryManagement.gif', title: 'Inventory Management'},
+  {url: '/portfolio/chatbot.gif', title: 'My AI'}
 ];
 
 const descriptions = (index) => {
@@ -21,7 +23,9 @@ const descriptions = (index) => {
     case 1:
       return 'Python, RAG, AI-Bloks';
     case 2:
-      return 'Firebase, Next.js'
+      return 'Firebase, Next.js';
+    case 3:
+      return 'Gemini API, React';
   }
 }
 
@@ -135,7 +139,13 @@ function Portfolio() {
                   {selectedImage.title}
                 </a>
               </h2>
-            ) : (
+            ) : currentIndex === 3 ? (
+              <h2 style={{ margin: 15 }}>
+                <a href="https://gemini-chatbot-iota-five.vercel.app/" target="_blank" rel="noopener noreferrer" className='link'>
+                  {selectedImage.title}
+                </a>
+              </h2>
+            ):(
               <h2 style={{ margin: 15 }}>{selectedImage.title}</h2>
             )}
           </div>
