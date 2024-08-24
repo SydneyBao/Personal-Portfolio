@@ -19,13 +19,13 @@ const images = [
 const descriptions = (index) => {
   switch (index) {
     case 0: 
-      return 'React, Puppeteer, Firebase';
+      return 'React, Puppeteer, Firebase, Bootstrap';
     case 1:
-      return 'Python, RAG, AI-Bloks';
+      return 'Python, AI-Bloks';
     case 2:
-      return 'Firebase, Next.js';
+      return 'Firebase, Next.js, Material UI, Vercel, CI/CD';
     case 3:
-      return 'Gemini API, React';
+      return 'Gemini API, React, Next.js, Vercel, CI/CD';
   }
 }
 
