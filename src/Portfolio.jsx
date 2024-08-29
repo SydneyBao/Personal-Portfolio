@@ -6,26 +6,30 @@ const thumbnails = [
   { url: '/portfolio/HeadshotNews.gif', title: 'Headshot News' },
   { url: '/portfolio/NutritionalPalThumbnail.gif', title: 'Nutritional Pal' },
   {url: '/portfolio/InventoryManagementThumbnail.gif', title: 'Inventory Management'},
-  {url: '/portfolio/chatbotThumbnail.gif', title: 'My AI'}
+  {url: '/portfolio/chatbotThumbnail.gif', title: 'My AI'}, 
+  {url: '/portfolio/PopperThumbnail.gif', title: 'Popper.Social'}
 ];
 
 const images = [
   { url: '/portfolio/HeadshotNews.gif', title: 'Headshot News' },
   { url: '/portfolio/NutritionalPal.gif', title: 'Nutritional Pal' },
   {url: '/portfolio/InventoryManagement.gif', title: 'Inventory Management'},
-  {url: '/portfolio/chatbot.gif', title: 'My AI'}
+  {url: '/portfolio/chatbot.gif', title: 'My AI'},
+  {url: '/portfolio/Popper.gif', title: 'Popper.Social'}
 ];
 
 const descriptions = (index) => {
   switch (index) {
     case 0: 
-      return 'React, Puppeteer, Firebase, Bootstrap';
+      return 'React, Puppeteer, Firebase, Bootstrap, Agile';
     case 1:
-      return 'Python, AI-Bloks';
+      return 'Python, AI-Bloks, Machine Learning';
     case 2:
       return 'Firebase, Next.js, Material UI, Vercel, CI/CD';
     case 3:
-      return 'Gemini API, React, Next.js, Vercel, CI/CD';
+      return 'Gemini API, React, Next.js, Vercel, CI/CD, Machine Learning';
+    case 4:
+      return 'React Native, Firebase, CI/CD, XCode, TestFlight'
   }
 }
 
@@ -145,7 +149,13 @@ function Portfolio() {
                   {selectedImage.title}
                 </a>
               </h2>
-            ):(
+            ) : currentIndex === 4 ? (
+              <h2 style={{ margin: 15 }}>
+                <a href="https://apps.apple.com/us/app/popper/id6463947777?platform=iphone" target="_blank" rel="noopener noreferrer" className='link'>
+                  {selectedImage.title}
+                </a>
+              </h2>
+            ) :(
               <h2 style={{ margin: 15 }}>{selectedImage.title}</h2>
             )}
           </div>
