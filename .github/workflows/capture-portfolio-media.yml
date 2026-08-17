@@ -1,4 +1,5 @@
 name: Capture portfolio media
+run-name: Capture ${{ inputs.slug }} (${{ inputs.requestId }})
 
 on:
   workflow_dispatch:
@@ -48,6 +49,13 @@ jobs:
             --no-fund \
             playwright@1.55.0
           "$runtime_directory/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Enable the Chromium user namespace sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = "0"
 
       - name: Capture through the public-only pinned proxy
         env:
