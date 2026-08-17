@@ -1,14 +1,22 @@
 /* eslint-env node */
+/* global Element, Image, document, window */
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import {
   parsePublicHttpsUrl,
   resolvePublicHost,
   validatePublicHttpsUrl,
 } from '../../../netlify/functions/_shared/safe-url.mjs';
+import {
+  describeSafeInteraction,
+  isSameDocumentUrl,
+  MAX_GUIDED_CLICKS,
+  selectSafeInteractions,
+} from './capture-interactions.mjs';
 
 const MAX_BROWSER_REQUESTS = 180;
 const MAX_PROXY_TUNNELS = 80;
@@ -16,6 +24,8 @@ const MAX_TUNNEL_BYTES = 25 * 1024 * 1024;
 const MAX_TOTAL_PROXY_BYTES = 80 * 1024 * 1024;
 const MAX_COVER_BYTES = 3 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+const GUIDED_CONTROL_SELECTOR = 'button, summary, [role="button"], [role="tab"], [role="switch"]';
+const MAX_GUIDED_INTERACTION_MS = 12000;
 
 function requiredEnvironment(name) {
   const value = String(process.env[name] || '');
@@ -78,21 +88,30 @@ function connectPinned(addresses, port) {
   });
 }
 
-async function startPinnedHttpsProxy() {
+export async function startPinnedHttpsProxy() {
   let tunnelCount = 0;
   let totalBytes = 0;
+  let frozen = false;
+  const activeSockets = new Set();
+
+  const trackSocket = (socket) => {
+    activeSockets.add(socket);
+    socket.once('close', () => activeSockets.delete(socket));
+    if (frozen) socket.destroy();
+  };
 
   const server = http.createServer((_request, response) => {
     response.writeHead(403, { Connection: 'close', 'Content-Type': 'text/plain' });
     response.end('Only validated HTTPS CONNECT tunnels are allowed.');
   });
   server.maxConnections = 64;
+  server.on('connection', trackSocket);
 
   server.on('connect', async (request, clientSocket, initialData) => {
     tunnelCount += 1;
     clientSocket.on('error', () => {});
     clientSocket.pause();
-    if (tunnelCount > MAX_PROXY_TUNNELS) {
+    if (frozen || tunnelCount > MAX_PROXY_TUNNELS) {
       rejectTunnel(clientSocket, '429 Too Many Requests');
       return;
     }
@@ -112,6 +131,12 @@ async function startPinnedHttpsProxy() {
     try {
       const addresses = await resolvePublicHost(target.hostname);
       const upstream = await connectPinned(addresses, 443);
+      trackSocket(upstream);
+      if (frozen) {
+        upstream.destroy();
+        rejectTunnel(clientSocket);
+        return;
+      }
       let tunnelBytes = 0;
 
       const countBytes = (chunk) => {
@@ -147,6 +172,11 @@ async function startPinnedHttpsProxy() {
 
   return {
     port: address.port,
+    freeze() {
+      frozen = true;
+      for (const socket of activeSockets) socket.destroy();
+      activeSockets.clear();
+    },
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
@@ -174,6 +204,105 @@ async function pngToWebp(browser, pngBytes) {
   } finally {
     await context.close();
   }
+}
+
+async function guidedCandidates(page) {
+  return page.evaluate(({ maximum, selector }) => {
+    const controls = [...document.querySelectorAll(selector)].slice(0, maximum);
+    return controls.map((element, index) => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const centerX = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
+      const centerY = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
+      const centerIsVisible = rect.bottom > 0
+        && rect.right > 0
+        && rect.top < window.innerHeight
+        && rect.left < window.innerWidth;
+      const topElement = centerIsVisible ? document.elementFromPoint(centerX, centerY) : null;
+      const closestAnchor = element.closest('a');
+      const closestDownload = element.closest('[download]');
+      const closestEditable = element.closest('[contenteditable]:not([contenteditable="false"])');
+      const closestInert = element.closest('[inert]');
+      const type = String(element.getAttribute('type') || '').toLowerCase();
+
+      return {
+        index,
+        tagName: element.tagName.toLowerCase(),
+        role: element.getAttribute('role') || '',
+        type,
+        text: element.innerText || element.textContent || '',
+        ariaLabel: element.getAttribute('aria-label') || '',
+        title: element.getAttribute('title') || '',
+        name: element.getAttribute('name') || '',
+        id: element.id || '',
+        className: typeof element.className === 'string' ? element.className : '',
+        testId: element.getAttribute('data-testid') || '',
+        disabled: element.matches(':disabled'),
+        ariaDisabled: element.getAttribute('aria-disabled') === 'true',
+        inert: Boolean(closestInert),
+        formOwned: Boolean(element.closest('form') || element.form),
+        anchorOwned: Boolean(closestAnchor),
+        hasHref: element.hasAttribute('href') || Boolean(closestAnchor?.getAttribute('href')),
+        downloadOwned: Boolean(closestDownload),
+        contentEditable: element.isContentEditable || Boolean(closestEditable),
+        visible: rect.width >= 18
+          && rect.height >= 18
+          && style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && style.pointerEvents !== 'none'
+          && Number.parseFloat(style.opacity || '1') > 0.05,
+        occluded: Boolean(centerIsVisible && topElement
+          && topElement !== element
+          && !element.contains(topElement)),
+        ariaExpanded: element.getAttribute('aria-expanded'),
+        ariaPressed: element.getAttribute('aria-pressed'),
+        ariaHasPopup: element.getAttribute('aria-haspopup'),
+      };
+    });
+  }, { maximum: 80, selector: GUIDED_CONTROL_SELECTOR });
+}
+
+async function runGuidedInteractions(page, initialUrl, shouldStop) {
+  const startedAt = Date.now();
+  const seenFingerprints = new Set();
+  let clickCount = 0;
+
+  while (
+    clickCount < MAX_GUIDED_CLICKS
+    && Date.now() - startedAt < MAX_GUIDED_INTERACTION_MS
+    && !shouldStop()
+  ) {
+    const candidates = await guidedCandidates(page);
+    const [next] = selectSafeInteractions(candidates, {
+      limit: 1,
+      seenFingerprints,
+    });
+    if (!next) break;
+    seenFingerprints.add(next.fingerprint);
+
+    const control = page.locator(GUIDED_CONTROL_SELECTOR).nth(next.index);
+    try {
+      await control.evaluate((element) => element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'center',
+      }));
+      await page.waitForTimeout(450);
+
+      const refreshedCandidates = await guidedCandidates(page);
+      const refreshed = describeSafeInteraction(refreshedCandidates[next.index]);
+      if (!refreshed || refreshed.fingerprint !== next.fingerprint) continue;
+
+      await control.click({ timeout: 2500 });
+      clickCount += 1;
+      await page.waitForTimeout(900);
+      if (!isSameDocumentUrl(initialUrl, page.url())) break;
+    } catch {
+      if (shouldStop()) break;
+    }
+  }
+
+  return clickCount;
 }
 
 async function capture() {
@@ -228,10 +357,17 @@ async function capture() {
     let requestCount = 0;
     let mainNavigationCount = 0;
     let primaryPage = null;
+    let interactionPhase = false;
+    let interactionViolation = false;
     await context.route('**/*', async (route) => {
       requestCount += 1;
       const request = route.request();
       try {
+        if (interactionPhase) {
+          interactionViolation = true;
+          await route.abort('blockedbyclient');
+          return;
+        }
         if (
           primaryPage
           && request.isNavigationRequest()
@@ -259,10 +395,32 @@ async function capture() {
     primaryPage = page;
     page.setDefaultNavigationTimeout(30000);
     page.setDefaultTimeout(15000);
-    page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
-    page.on('download', (download) => download.cancel().catch(() => {}));
+    await page.addInitScript(() => {
+      document.addEventListener('click', (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('a[href], form')) event.preventDefault();
+      }, true);
+      document.addEventListener('submit', (event) => event.preventDefault(), true);
+    });
+    page.on('dialog', (dialog) => {
+      if (interactionPhase) interactionViolation = true;
+      dialog.dismiss().catch(() => {});
+    });
+    page.on('download', (download) => {
+      if (interactionPhase) interactionViolation = true;
+      download.cancel().catch(() => {});
+    });
+    page.on('filechooser', () => {
+      if (interactionPhase) interactionViolation = true;
+    });
+    page.on('crash', () => {
+      interactionViolation = true;
+    });
     context.on('page', (openedPage) => {
-      if (openedPage !== page) openedPage.close().catch(() => {});
+      if (openedPage !== page) {
+        if (interactionPhase) interactionViolation = true;
+        openedPage.close().catch(() => {});
+      }
     });
 
     await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -279,6 +437,12 @@ async function capture() {
     });
     const video = page.video();
     if (!video) throw new Error('Playwright did not start video recording.');
+
+    const guidedUrl = page.url();
+    await context.setOffline(true);
+    interactionPhase = true;
+    proxy.freeze();
+    await runGuidedInteractions(page, guidedUrl, () => interactionViolation);
 
     const scrollHeight = await page.evaluate(() => Math.max(
       document.documentElement.scrollHeight,
@@ -412,7 +576,11 @@ async function stage() {
   console.log(`Staged validated media for ${slug}.`);
 }
 
-const mode = process.argv[2];
-if (mode === 'capture') await capture();
-else if (mode === 'stage') await stage();
-else throw new Error('Use capture or stage mode.');
+const invokedDirectly = Boolean(process.argv[1])
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (invokedDirectly) {
+  const mode = process.argv[2];
+  if (mode === 'capture') await capture();
+  else if (mode === 'stage') await stage();
+  else throw new Error('Use capture or stage mode.');
+}
