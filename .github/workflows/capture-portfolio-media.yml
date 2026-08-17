@@ -23,7 +23,7 @@ jobs:
   capture:
     name: Capture without write credentials
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -40,15 +40,27 @@ jobs:
           set -euo pipefail
           runtime_directory="$RUNNER_TEMP/portfolio-playwright"
           mkdir -p "$runtime_directory"
-          npm install \
-            --prefix "$runtime_directory" \
-            --no-save \
-            --package-lock=false \
-            --ignore-scripts \
-            --no-audit \
-            --no-fund \
-            playwright@1.55.0
-          "$runtime_directory/node_modules/.bin/playwright" install --with-deps chromium
+          if [ ! -x "$runtime_directory/node_modules/.bin/playwright" ]; then
+            for attempt in 1 2; do
+              if timeout --kill-after=15s 180 npm install \
+                --prefix "$runtime_directory" \
+                --no-save \
+                --package-lock=false \
+                --ignore-scripts \
+                --no-audit \
+                --no-fund \
+                playwright@1.55.0; then
+                break
+              fi
+              if [ "$attempt" -eq 2 ]; then
+                echo "Playwright package installation failed twice." >&2
+                exit 1
+              fi
+              rm -rf "$runtime_directory/node_modules"
+              sleep 5
+            done
+          fi
+          timeout --kill-after=15s 480 "$runtime_directory/node_modules/.bin/playwright" install --with-deps chromium
 
       - name: Enable the Chromium user namespace sandbox
         shell: bash
