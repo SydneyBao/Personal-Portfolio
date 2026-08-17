@@ -1,7 +1,8 @@
 const ALLOWED_TAGS = new Set(['button', 'summary']);
 const ALLOWED_ROLES = new Set(['button', 'switch', 'tab']);
 const DENIED_ACTIONS = /(?:^|\b)(?:accept|agree|allow|authorize|back|block|book|buy|call|checkout|clear|comment|confirm|connect|consent|create|delete|destroy|donate|download|email|erase|follow|grant|home|install|like|log\s*(?:in|out)|login|logout|message|new\s+chat|order|pay|post|publish|purchase|rate|register|remove|report|reserve|reset|save|send|share|sign\s*(?:in|out|up)|signin|signout|signup|submit|subscribe|tip|unfollow|upload|vote)(?:\b|$)/i;
-const PREFERRED_ACTIONS = /(?:^|\b)(?:details|expand|features?|info|menu|more|next|previous|settings|start|tab|theme|toggle|tour)(?:\b|$)/i;
+const PREFERRED_ACTIONS = /^(?:(?:next|previous|prev)(?:\s+(?:slide|image|item|page|project|carousel))?|go\s+to\s+(?:slide|image|item|page|project)(?:\s+\d+)?|(?:open|show|hide|toggle|expand|collapse)\s+(?:the\s+)?(?:menu|navigation(?:\s+menu)?|sidebar|details|gallery|carousel|settings|theme|tour|information)|(?:play|pause|mute|unmute)(?:\s+(?:animation|video|preview))?|menu|settings|theme|(?:view|show)\s+(?:project\s+)?details)$/i;
+const LOCAL_DISMISS_ACTIONS = /^(?:(?:close|cancel|dismiss)(?:\s+(?:dialog|modal|menu|navigation|sidebar|panel|overlay))?|not\s+now|maybe\s+later)$/i;
 const MAX_CANDIDATES = 80;
 export const MAX_GUIDED_CLICKS = 4;
 
@@ -38,6 +39,8 @@ function normalizedCandidate(candidate) {
   ].map((value) => clean(value)).filter(Boolean);
   const actionText = clean(actionLabels.join(' '), 260);
   if (!actionText || DENIED_ACTIONS.test(actionText)) return null;
+  const preferredAction = actionLabels.some((label) => PREFERRED_ACTIONS.test(label));
+  const localDismissal = actionLabels.some((label) => LOCAL_DISMISS_ACTIONS.test(label));
 
   const fingerprintLabels = [
     ...actionLabels,
@@ -52,11 +55,15 @@ function normalizedCandidate(candidate) {
     index,
     tagName,
     role,
+    actionText,
+    preferredAction,
+    localDismissal,
     semanticText,
     text: clean(candidate?.ariaLabel || candidate?.text || candidate?.title || 'Control', 100),
     ariaExpanded: candidate?.ariaExpanded === 'true' || candidate?.ariaExpanded === 'false',
     ariaPressed: candidate?.ariaPressed === 'true' || candidate?.ariaPressed === 'false',
-    ariaHasPopup: Boolean(clean(candidate?.ariaHasPopup, 30)),
+    ariaHasPopup: Boolean(clean(candidate?.ariaHasPopup, 30))
+      && clean(candidate?.ariaHasPopup, 30).toLowerCase() !== 'false',
   };
 }
 
@@ -64,12 +71,22 @@ export function describeSafeInteraction(candidate) {
   const normalized = normalizedCandidate(candidate);
   if (!normalized) return null;
 
+  const presentationControl = normalized.tagName === 'summary'
+    || normalized.role === 'tab'
+    || normalized.role === 'switch'
+    || normalized.ariaExpanded
+    || normalized.ariaPressed
+    || normalized.ariaHasPopup
+    || normalized.preferredAction
+    || normalized.localDismissal;
+  if (!presentationControl) return null;
+
   let score = normalized.tagName === 'button' ? 1 : 4;
   if (normalized.role === 'tab' || normalized.role === 'switch') score += 6;
   if (normalized.ariaExpanded) score += 5;
   if (normalized.ariaPressed) score += 4;
   if (normalized.ariaHasPopup) score += 4;
-  if (PREFERRED_ACTIONS.test(normalized.semanticText)) score += 5;
+  if (normalized.preferredAction) score += 5;
   if (normalized.text.length <= 80) score += 1;
 
   const fingerprint = [
