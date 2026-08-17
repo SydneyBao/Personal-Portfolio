@@ -1,8 +1,8 @@
 const ALLOWED_TAGS = new Set(['button', 'summary']);
 const ALLOWED_ROLES = new Set(['button', 'switch', 'tab']);
 const DENIED_ACTIONS = /(?:^|\b)(?:accept|agree|allow|authorize|back|block|book|buy|call|checkout|clear|comment|confirm|connect|consent|create|delete|destroy|donate|download|email|erase|follow|grant|home|install|like|log\s*(?:in|out)|login|logout|message|new\s+chat|order|pay|post|publish|purchase|rate|register|remove|report|reserve|reset|save|send|share|sign\s*(?:in|out|up)|signin|signout|signup|submit|subscribe|tip|unfollow|upload|vote)(?:\b|$)/i;
-const PREFERRED_ACTIONS = /^(?:(?:next|previous|prev)(?:\s+(?:slide|image|item|page|project|carousel))?|go\s+to\s+(?:slide|image|item|page|project)(?:\s+\d+)?|(?:open|show|hide|toggle|expand|collapse)\s+(?:the\s+)?(?:menu|navigation(?:\s+menu)?|sidebar|details|gallery|carousel|settings|theme|tour|information)|(?:play|pause|mute|unmute)(?:\s+(?:animation|video|preview))?|menu|settings|theme|(?:view|show)\s+(?:project\s+)?details)$/i;
-const LOCAL_DISMISS_ACTIONS = /^(?:(?:close|cancel|dismiss)(?:\s+(?:dialog|modal|menu|navigation|sidebar|panel|overlay))?|not\s+now|maybe\s+later)$/i;
+const PREFERRED_ACTIONS = /^(?:(?:next|previous|prev)(?:\s+(?:slide|image|item|page|project|carousel))?|go\s+to\s+(?:slide|image|item|page|project)(?:\s+\d+)?|(?:open|show|hide|toggle|expand|collapse)\s+(?:the\s+)?(?:(?:chat\s+)?menu|navigation(?:\s+menu)?|sidebar|details|gallery|carousel|settings|theme|tour|information)|(?:play|pause|mute|unmute)(?:\s+(?:animation|video|preview))?|menu|settings|theme|(?:view|show)\s+(?:project\s+)?details)$/i;
+const LOCAL_DISMISS_ACTIONS = /^(?:(?:close|cancel|dismiss)(?:\s+(?:dialog|modal|(?:chat\s+)?menu|navigation|sidebar|panel|overlay))?|not\s+now|maybe\s+later)$/i;
 const MAX_CANDIDATES = 80;
 export const MAX_GUIDED_CLICKS = 4;
 
@@ -87,6 +87,7 @@ export function describeSafeInteraction(candidate) {
   if (normalized.ariaPressed) score += 4;
   if (normalized.ariaHasPopup) score += 4;
   if (normalized.preferredAction) score += 5;
+  if (normalized.localDismissal) score -= 2;
   if (normalized.text.length <= 80) score += 1;
 
   const fingerprint = [
