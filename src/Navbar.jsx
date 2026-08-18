@@ -1,22 +1,41 @@
-// src/Navbar.js
-import React from 'react';
-import { Navbar, Nav, Container } from 'react-bootstrap';
-import './custom.scss';
+import Icon from './components/Icon';
 
-function NavigationBar() {
-    return (
-      <Navbar expand="lg" fixed="top" className="nav py-2" id="mainNav">
-        <Container className="px-3 px-lg-3 py-1">
-          <Navbar.Brand href="#page-top">Sydney Bao</Navbar.Brand>
-          <Navbar.Toggle aria-controls="navbarResponsive" />
-          <Navbar.Collapse id="navbarResponsive">
-            <Nav className="ms-auto my-2 my-lg-0">
-              <Nav.Link href="#portfolio">Portfolio</Nav.Link>
-            </Nav>
-          </Navbar.Collapse>
-        </Container>
-      </Navbar>
-    );
-  }
+function NavigationBar({ isOwnerSignedIn, onOpenAdmin }) {
+  return (
+    <header className="topbar">
+      <nav className="topbar-inner" aria-label="Primary navigation">
+        <a className="brand" href="#profile" aria-label="Sydney Bao, back to profile">
+          <span className="brand-mark">
+            <img src="/icon.png" alt="" />
+          </span>
+          <span className="brand-copy">
+            <strong>sydneybao</strong>
+            <span>portfolio</span>
+          </span>
+        </a>
+
+        <div className="topbar-links">
+          <a href="#profile" className="topbar-link" aria-label="Profile">
+            <Icon name="home" size={21} />
+            <span>Profile</span>
+          </a>
+          <a href="#projects" className="topbar-link" aria-label="Projects">
+            <Icon name="grid" size={20} />
+            <span>Projects</span>
+          </a>
+          <button
+            aria-label={isOwnerSignedIn ? 'Edit profile' : 'Sign in'}
+            className="topbar-admin"
+            onClick={onOpenAdmin}
+            type="button"
+          >
+            <Icon name="user" size={18} />
+            <span>{isOwnerSignedIn ? 'Edit profile' : 'Sign in'}</span>
+          </button>
+        </div>
+      </nav>
+    </header>
+  );
+}
 
 export default NavigationBar;

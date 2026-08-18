@@ -1,45 +1,33 @@
-import React from 'react';
-import { Container, Row, Col } from 'react-bootstrap';
+import Icon from './components/Icon';
 
-const Footer = () => {
+function Footer({ mode, status }) {
+  const syncLabel = mode === 'cloud' ? 'Cloud social feed' : 'Local preview data';
+
   return (
-    <footer className="bg-light py-5">
-      <Container>
-        <p className='footer-ai'>Questions? Ask My personal <a href="https://gemini-chatbot-iota-five.vercel.app/" target="_blank">AI Assistant!</a></p>
-        <Row className="justify-content-center">
-          <Col lg={8}>
-            <div className="d-flex justify-content-center">
-              <div className="contact-item mx-3">
-                <a href="mailto:someone@example.com" target="_blank" rel="noopener noreferrer">
-                  <i className="bi bi-envelope fs-2 mb-2 text-muted"></i>
-                </a>                    
-              </div>
-              <div className="contact-item mx-3">
-                <a href="https://linkedin.com/in/sydney-bao" target="_blank" rel="noopener noreferrer">
-                  <i className="bi bi-linkedin fs-2 mb-2 text-muted"></i>
-                </a>  
-              </div>
-              <div className="contact-item mx-3">
-                <a href="https://github.com/SydneyBao" target="_blank" rel="noopener noreferrer">
-                  <i className="bi bi-github fs-2 mb-2 text-muted"></i>
-                </a>  
-              </div>
-              <div className="contact-item mx-3">
-                <a href="/SydneyBaoResume.pdf" target="_blank" rel="noopener noreferrer">
-                  <i className="bi bi-file-earmark-person fs-2 mb-2 text-muted"></i>
-                </a>  
-              </div>
-            </div>
-          </Col>
-        </Row>
-        <Row className="mt-3">
-          <Col xs={12}>
-            <div className="small text-center text-muted">&copy; 2024 Sydney Bao</div>
-          </Col>
-        </Row>
-      </Container>
+    <footer className="footer shell">
+      <div className="footer-line" />
+      <div className="footer-content">
+        <div>
+          <a className="footer-wordmark" href="#profile">Sydney Bao</a>
+          <p>Designed and built with curiosity.</p>
+        </div>
+        <div className="footer-links">
+          <a href="mailto:s.bao2115@gmail.com">Email</a>
+          <a href="https://linkedin.com/in/sydney-bao" target="_blank" rel="noreferrer">LinkedIn</a>
+          <a href="https://github.com/SydneyBao" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://gemini-chatbot-iota-five.vercel.app/" target="_blank" rel="noreferrer">
+            Ask my AI <Icon name="arrowUpRight" size={14} />
+          </a>
+        </div>
+      </div>
+      <div className="footer-meta">
+        <span>© {new Date().getFullYear()} Sydney Bao</span>
+        <span className={`sync-state is-${status}`} title={syncLabel}>
+          <i /> {syncLabel}
+        </span>
+      </div>
     </footer>
   );
-};
+}
 
 export default Footer;

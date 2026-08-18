@@ -1,0 +1,395 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return signedIn()
+        && request.auth.uid == 'BCjFGLXYssQCINHvA0itGYgCfmI3'
+        && request.auth.token.email == 's.bao2115@gmail.com'
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    function publishedProject(projectId) {
+      let path = /databases/$(database)/documents/portfolioContent/$(projectId);
+      return exists(path) && get(path).data.status == 'published';
+    }
+
+    function staticProject(projectId) {
+      return projectId in [
+        'popper-social',
+        'sydney-ai-assistant',
+        'inventory-management',
+        'nutritional-pal',
+        'headshot-news'
+      ];
+    }
+
+    function deletedProject(projectId) {
+      return exists(
+        /databases/$(database)/documents/portfolioDeletedProjects/$(projectId)
+      );
+    }
+
+    function knownProject(projectId) {
+      return publishedProject(projectId)
+        || (staticProject(projectId) && !deletedProject(projectId));
+    }
+
+    function validRevisionOnCreate() {
+      return request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validRevisionOnUpdate() {
+      return request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validProfile() {
+      return request.resource.data.keys().hasAll([
+          'displayName', 'handle', 'pronouns', 'bio', 'linkedinLabel',
+          'linkedinUrl', 'resumeUrl', 'schemaVersion', 'revision', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'handle', 'pronouns', 'bio', 'linkedinLabel',
+          'linkedinUrl', 'resumeUrl', 'schemaVersion', 'revision', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.trim().size() >= 1
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.handle is string
+        && request.resource.data.handle.trim().size() >= 1
+        && request.resource.data.handle.size() <= 40
+        && request.resource.data.pronouns is string
+        && request.resource.data.pronouns.size() <= 30
+        && request.resource.data.bio is string
+        && request.resource.data.bio.trim().size() >= 1
+        && request.resource.data.bio.size() <= 500
+        && request.resource.data.linkedinLabel is string
+        && request.resource.data.linkedinLabel.size() <= 80
+        && request.resource.data.linkedinUrl is string
+        && request.resource.data.linkedinUrl.size() <= 500
+        && validResumeUrl(request.resource.data.resumeUrl)
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validResumeUrl(value) {
+      return value == '/SydneyBaoResume.pdf' || validMediaUrl(value);
+    }
+
+    function validMediaUrl(value) {
+      return value is string
+        && value.size() >= 1
+        && value.size() <= 1000
+        && (
+          value.matches('^/portfolio/.*')
+          || value.matches('^https://.*')
+        );
+    }
+
+    function validMediaItem(item) {
+      return item is map
+        && item.keys().hasAll(['url', 'alt', 'type'])
+        && item.keys().hasOnly(['url', 'alt', 'type'])
+        && validMediaUrl(item.url)
+        && item.alt is string
+        && item.alt.size() <= 180
+        && item.type in ['image', 'video'];
+    }
+
+    function validMediaItemAt(items, index) {
+      return items.size() <= index || validMediaItem(items[index]);
+    }
+
+    function validProject(projectId) {
+      return request.resource.data.keys().hasAll([
+          'slug', 'title', 'eyebrow', 'role', 'caption', 'thumbnail', 'media', 'mediaItems',
+          'alt', 'categories', 'tech', 'highlights', 'links', 'accent', 'order',
+          'status', 'schemaVersion', 'revision', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'slug', 'title', 'eyebrow', 'role', 'caption', 'thumbnail', 'media', 'mediaItems',
+          'alt', 'categories', 'tech', 'highlights', 'links', 'accent', 'order',
+          'status', 'schemaVersion', 'revision', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.slug == projectId
+        && request.resource.data.slug is string
+        && request.resource.data.slug.size() >= 1
+        && request.resource.data.slug.size() <= 64
+        && request.resource.data.title is string
+        && request.resource.data.title.trim().size() >= 1
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.eyebrow is string
+        && request.resource.data.eyebrow.trim().size() >= 1
+        && request.resource.data.eyebrow.size() <= 80
+        && request.resource.data.role is string
+        && request.resource.data.role.trim().size() >= 1
+        && request.resource.data.role.size() <= 100
+        && request.resource.data.caption is string
+        && request.resource.data.caption.trim().size() >= 1
+        && request.resource.data.caption.size() <= 900
+        && validMediaUrl(request.resource.data.thumbnail)
+        && validMediaUrl(request.resource.data.media)
+        && request.resource.data.mediaItems is list
+        && request.resource.data.mediaItems.size() >= 1
+        && request.resource.data.mediaItems.size() <= 12
+        && validMediaItemAt(request.resource.data.mediaItems, 0)
+        && validMediaItemAt(request.resource.data.mediaItems, 1)
+        && validMediaItemAt(request.resource.data.mediaItems, 2)
+        && validMediaItemAt(request.resource.data.mediaItems, 3)
+        && validMediaItemAt(request.resource.data.mediaItems, 4)
+        && validMediaItemAt(request.resource.data.mediaItems, 5)
+        && validMediaItemAt(request.resource.data.mediaItems, 6)
+        && validMediaItemAt(request.resource.data.mediaItems, 7)
+        && validMediaItemAt(request.resource.data.mediaItems, 8)
+        && validMediaItemAt(request.resource.data.mediaItems, 9)
+        && validMediaItemAt(request.resource.data.mediaItems, 10)
+        && validMediaItemAt(request.resource.data.mediaItems, 11)
+        && request.resource.data.alt is string
+        && request.resource.data.alt.size() <= 180
+        && request.resource.data.categories is list
+        && request.resource.data.categories.size() >= 1
+        && request.resource.data.categories.size() <= 10
+        && request.resource.data.tech is list
+        && request.resource.data.tech.size() <= 30
+        && request.resource.data.highlights is list
+        && request.resource.data.highlights.size() <= 20
+        && request.resource.data.links is list
+        && request.resource.data.links.size() <= 12
+        && request.resource.data.accent is string
+        && request.resource.data.accent.size() <= 20
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0
+        && request.resource.data.order <= 1000
+        && request.resource.data.status == 'published'
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validDeletedProject(projectId) {
+      return request.resource.data.keys().hasAll(['slug', 'deletedAt'])
+        && request.resource.data.keys().hasOnly(['slug', 'deletedAt'])
+        && request.resource.data.slug == projectId
+        && request.resource.data.slug is string
+        && request.resource.data.slug.size() >= 1
+        && request.resource.data.slug.size() <= 64
+        && request.resource.data.deletedAt == request.time;
+    }
+
+    function beforeCount(projectId, field) {
+      let path = /databases/$(database)/documents/portfolioProjects/$(projectId);
+      return exists(path) ? get(path).data.get(field, 0) : 0;
+    }
+
+    function validStats(projectId) {
+      return knownProject(projectId)
+        && request.resource.data.keys().hasAll(['likeCount', 'commentCount', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['likeCount', 'commentCount', 'updatedAt'])
+        && request.resource.data.likeCount is int
+        && request.resource.data.likeCount >= 0
+        && request.resource.data.commentCount is int
+        && request.resource.data.commentCount >= 0
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validLikeTransition(projectId) {
+      let likePath = /databases/$(database)/documents/portfolioProjects/$(projectId)/likes/$(request.auth.uid);
+      let beforeLikes = beforeCount(projectId, 'likeCount');
+      let beforeComments = beforeCount(projectId, 'commentCount');
+      let afterLikes = request.resource.data.likeCount;
+
+      return request.resource.data.commentCount == beforeComments
+        && (
+          (
+            afterLikes == beforeLikes + 1
+            && !exists(likePath)
+            && existsAfter(likePath)
+          )
+          || (
+            afterLikes == beforeLikes - 1
+            && exists(likePath)
+            && !existsAfter(likePath)
+          )
+        );
+    }
+
+    function linkedNewComment(projectId, commentId) {
+      let path = /databases/$(database)/documents/portfolioProjects/$(projectId)/comments/$(commentId);
+      return !exists(path) && existsAfter(path);
+    }
+
+    function validCommentTransition(projectId) {
+      let limiterPath = /databases/$(database)/documents/portfolioCommentRateLimits/$(request.auth.uid);
+      let beforeLikes = beforeCount(projectId, 'likeCount');
+      let beforeComments = beforeCount(projectId, 'commentCount');
+
+      return request.resource.data.likeCount == beforeLikes
+        && request.resource.data.commentCount == beforeComments + 1
+        && existsAfter(limiterPath)
+        && getAfter(limiterPath).data.lastCommentAt == request.time
+        && getAfter(limiterPath).data.projectSlug == projectId
+        && linkedNewComment(projectId, getAfter(limiterPath).data.lastCommentId);
+    }
+
+    function validCommentBody(projectId) {
+      return request.resource.data.keys().hasAll([
+          'projectSlug', 'displayName', 'body', 'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'projectSlug', 'displayName', 'body', 'createdAt'
+        ])
+        && request.resource.data.projectSlug == projectId
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.trim().size() >= 1
+        && request.resource.data.displayName.size() <= 32
+        && request.resource.data.body is string
+        && request.resource.data.body.trim().size() >= 1
+        && request.resource.data.body.size() <= 500
+        && request.resource.data.createdAt == request.time;
+    }
+
+    function matchingLimiter(projectId, commentId) {
+      let path = /databases/$(database)/documents/portfolioCommentRateLimits/$(request.auth.uid);
+      return existsAfter(path)
+        && getAfter(path).data.lastCommentAt == request.time
+        && getAfter(path).data.projectSlug == projectId
+        && getAfter(path).data.lastCommentId == commentId;
+    }
+
+    function matchingCommentCount(projectId) {
+      let path = /databases/$(database)/documents/portfolioProjects/$(projectId);
+      return existsAfter(path)
+        && getAfter(path).data.commentCount == beforeCount(projectId, 'commentCount') + 1;
+    }
+
+    match /portfolioSite/profile {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isOwner() && validProfile() && validRevisionOnCreate();
+      allow update: if isOwner() && validProfile() && validRevisionOnUpdate();
+      allow delete: if false;
+    }
+
+    match /portfolioContent/{projectId} {
+      allow get: if isOwner() || resource.data.status == 'published';
+      allow list: if request.query.limit != null
+        && request.query.limit <= 100
+        && (isOwner() || resource.data.status == 'published');
+      allow create: if isOwner() && validProject(projectId) && validRevisionOnCreate();
+      allow update: if isOwner() && validProject(projectId) && validRevisionOnUpdate();
+      allow delete: if isOwner();
+    }
+
+    match /portfolioDeletedProjects/{projectId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 100;
+      allow create, update: if isOwner() && validDeletedProject(projectId);
+      allow delete: if false;
+    }
+
+    match /portfolioProjects/{projectId} {
+      allow get: if knownProject(projectId);
+      allow list: if false;
+
+      allow create, update: if signedIn()
+        && validStats(projectId)
+        && (
+          validLikeTransition(projectId)
+          || validCommentTransition(projectId)
+        );
+
+      allow delete: if false;
+
+      match /likes/{userId} {
+        allow get: if signedIn() && userId == request.auth.uid;
+        allow list: if false;
+
+        allow create: if signedIn()
+          && knownProject(projectId)
+          && userId == request.auth.uid
+          && request.resource.data.keys().hasAll(['ownerUid', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['ownerUid', 'createdAt'])
+          && request.resource.data.ownerUid == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && getAfter(
+            /databases/$(database)/documents/portfolioProjects/$(projectId)
+          ).data.likeCount == beforeCount(projectId, 'likeCount') + 1;
+
+        allow delete: if signedIn()
+          && userId == request.auth.uid
+          && resource.data.ownerUid == request.auth.uid
+          && getAfter(
+            /databases/$(database)/documents/portfolioProjects/$(projectId)
+          ).data.likeCount == beforeCount(projectId, 'likeCount') - 1;
+
+        allow update: if false;
+      }
+
+      match /comments/{commentId} {
+        allow get: if knownProject(projectId);
+        allow list: if knownProject(projectId)
+          && request.query.limit != null
+          && request.query.limit <= 80;
+
+        allow create: if signedIn()
+          && knownProject(projectId)
+          && validCommentBody(projectId)
+          && matchingLimiter(projectId, commentId)
+          && matchingCommentCount(projectId);
+
+        allow update, delete: if false;
+      }
+    }
+
+    match /portfolioCommentRateLimits/{userId} {
+      allow get: if signedIn() && userId == request.auth.uid;
+      allow list: if false;
+
+      allow create: if signedIn()
+        && userId == request.auth.uid
+        && request.resource.data.keys().hasAll([
+          'projectSlug', 'lastCommentId', 'lastCommentAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'projectSlug', 'lastCommentId', 'lastCommentAt'
+        ])
+        && knownProject(request.resource.data.projectSlug)
+        && request.resource.data.lastCommentAt == request.time
+        && linkedNewComment(
+          request.resource.data.projectSlug,
+          request.resource.data.lastCommentId
+        );
+
+      allow update: if signedIn()
+        && userId == request.auth.uid
+        && request.resource.data.keys().hasAll([
+          'projectSlug', 'lastCommentId', 'lastCommentAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'projectSlug', 'lastCommentId', 'lastCommentAt'
+        ])
+        && knownProject(request.resource.data.projectSlug)
+        && request.resource.data.lastCommentAt == request.time
+        && request.time >= resource.data.lastCommentAt + duration.value(10, 's')
+        && linkedNewComment(
+          request.resource.data.projectSlug,
+          request.resource.data.lastCommentId
+        );
+
+      allow delete: if false;
+    }
+  }
+}

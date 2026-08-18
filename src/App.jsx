@@ -1,69 +1,76 @@
-import React, { useEffect, useRef } from 'react';
-import NET from 'vanta/dist/vanta.net.min';
-import * as THREE from 'three';
-
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import './App.css';
-import './custom.scss';
+import AdminPanel from './components/AdminPanel';
+import Footer from './Footer';
+import Home from './Home';
 import NavigationBar from './Navbar';
 import Portfolio from './Portfolio';
-import Home from './Home';
-import Footer from './Footer';
+import usePortfolioContent from './hooks/usePortfolioContent';
+import { restoreOwnerSession } from './lib/contentApi';
+import useSocialFeed from './hooks/useSocialFeed';
 
 function App() {
-  const vantaRef = useRef(null);
-  const vantaEffectRef = useRef(null);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [ownerSession, setOwnerSession] = useState(null);
+  const sessionChangeSequence = useRef(0);
+  const content = usePortfolioContent();
+  const social = useSocialFeed(content.projects);
+  const openAdmin = useCallback(() => setAdminOpen(true), []);
+  const closeAdmin = useCallback(() => setAdminOpen(false), []);
+  const handleOwnerSessionChange = useCallback((session) => {
+    sessionChangeSequence.current += 1;
+    setOwnerSession(session || null);
+  }, []);
 
   useEffect(() => {
-    let vantaEffect;
-
-    if (vantaRef.current) {
-      vantaEffectRef.current = NET({
-        el: vantaRef.current,
-        THREE: THREE,
-        mouseControls: true,
-        touchControls: true,
-        gyroControls: false,
-        minHeight: 200.00,
-        minWidth: 200.00,
-        scale: 1.00,
-        scaleMobile: 1.00,
-        color: 0x4bd1ed,
-        backgroundColor: 0x141e1e,
-        points: 10.00,
-        maxDistance: 23.00,
-        spacing: 15.00
-      });
-
-      const scene = vantaEffectRef.current.scene;
-      
-      scene.traverse((object) => {
-        if (object instanceof THREE.LineSegments) {
-          object.material.color.setHex(0x251b39); 
+    let active = true;
+    const restoreSequence = sessionChangeSequence.current;
+    restoreOwnerSession()
+      .then((session) => {
+        if (active && restoreSequence === sessionChangeSequence.current) {
+          setOwnerSession(session);
+        }
+      })
+      .catch(() => {
+        if (active && restoreSequence === sessionChangeSequence.current) {
+          setOwnerSession(null);
         }
       });
-    }
-    
-    return () => {
-      if (vantaEffect) vantaEffect.destroy();
-    };
+    return () => { active = false; };
   }, []);
 
   return (
     <div className="app">
-      <div className="bg" id="vanta" ref={vantaRef}>
-        <NavigationBar />
-        <div className="content">
-          <section className="home-section">
-            <Home />
-          </section>
-          <section className="portfolio-section">
-            <Portfolio />
-          </section>
-          <section className="footer-section">
-            <Footer />
-          </section>
-        </div>
-      </div>
+      <NavigationBar isOwnerSignedIn={Boolean(ownerSession)} onOpenAdmin={openAdmin} />
+      <main>
+        <Home
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+          profile={content.profile}
+          projects={content.projects}
+          social={social}
+        />
+        <Portfolio activeFilter={activeFilter} projects={content.projects} social={social} />
+      </main>
+      <Footer mode={social.mode} status={social.status} />
+      <div className="ambient ambient-one" aria-hidden="true" />
+      <div className="ambient ambient-two" aria-hidden="true" />
+      {adminOpen && (
+        <AdminPanel
+          initialSession={ownerSession}
+          onClose={closeAdmin}
+          onContentUpdated={content.refresh}
+          onSessionChange={handleOwnerSessionChange}
+          profile={content.profile}
+          projects={content.projects}
+        />
+      )}
     </div>
   );
 }

@@ -1,62 +1,98 @@
-import './App.css';
-import './custom.scss';
-import splitString from './utils/splitString';
-import { motion } from "framer-motion";
+import Icon from './components/Icon';
+import { profileFilters } from './data/projects';
 
+function compactNumber(value) {
+  return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
 
-const heading = "Hi, I'm Sydney";
-const text = "With 11 years of coding experience, I bring a unique blend of creativity, passion, and technical expertise to the table. I have a strong foundation in Java, Python, and JavaScript, gained through nine years of private coding lessons and extensive experience programming front-end, back-end, and full stack applications.";
-
-function Home() {
-
-  const headingChars = splitString(heading);
-  const textChars = splitString(text);
-
-  const charVariants = {
-    hidden: { opacity: 0 },
-    reveal: { opacity: 1 },
-  };
+function Home({ activeFilter, onFilterChange, profile, projects, social }) {
+  const bioLines = profile.bio.split('\n').map((line) => line.trim()).filter(Boolean);
 
   return (
-    <>
-    <div id="page-top">
-        <motion.h1
-            className='header'
-            initial="hidden"
-            whileInView="reveal"
-            transition={{ staggerChildren: .07 }}
-        >
-            {headingChars.map((char, index) => (
-            <motion.span
-                key={index}
-                transition={{ duration: 0.5 }}
-                variants={charVariants}
-            >
-                {char}
-            </motion.span>
-            ))}
-        </motion.h1>
-        <motion.p
-            className='paragraph text-white-75 mb-5'
-            initial="hidden"
-            whileInView="reveal"
-            transition={{ staggerChildren: .015 }}
-        >
-            {textChars.map((char, index) => (
-            <motion.span
-                key={index}
-                transition={{ duration: 0.5 }}
-                variants={charVariants}
-            >
-                {char}
-            </motion.span>
-            ))}
-        </motion.p>
-        <div className="arrow"></div>
-        <a className="btn" href="/SydneyBaoResume.pdf" target="_blank" rel="noopener noreferrer">Find Out More</a> 
-    </div>
-    
-    </>
+    <section className="profile shell" id="profile" aria-labelledby="profile-name">
+      <div className="profile-main">
+        <div className="avatar-wrap" aria-label="Sydney Bao profile image">
+          <div className="avatar-ring">
+            <div className="avatar">
+              <img src="/icon.png" alt="Sydney Bao monogram" />
+            </div>
+          </div>
+          <span className="availability-dot" title="Open to opportunities" />
+        </div>
+
+        <div className="profile-copy">
+          <div className="profile-title-row">
+            <div>
+              <div className="handle-row">
+                <h1 id="profile-name">{profile.handle}</h1>
+                <span className="verified" aria-label="Verified portfolio">
+                  <Icon name="check" size={12} />
+                </span>
+              </div>
+            </div>
+
+            <div className="profile-actions">
+              <a className="button button-primary" href={profile.resumeUrl} target="_blank" rel="noreferrer">
+                View résumé
+                <Icon name="arrowUpRight" size={16} />
+              </a>
+            </div>
+          </div>
+
+          <dl className="profile-stats" aria-label="Profile statistics">
+            <div>
+              <dt>{projects.length}</dt>
+              <dd>projects</dd>
+            </div>
+            <div>
+              <dt>{compactNumber(social.totals.likes)}</dt>
+              <dd>likes</dd>
+            </div>
+            <div>
+              <dt>{compactNumber(social.totals.comments)}</dt>
+              <dd>comments</dd>
+            </div>
+          </dl>
+
+          <div className="bio">
+            <p>
+              <strong>{profile.displayName}</strong>
+              {profile.pronouns && <span className="bio-pronouns">{profile.pronouns}</span>}
+            </p>
+            {bioLines.map((line) => <p key={line}>{line}</p>)}
+            {profile.linkedinUrl && (
+              <div className="bio-links">
+                <a href={profile.linkedinUrl} target="_blank" rel="noreferrer">
+                  <Icon name="link" size={15} /> {profile.linkedinLabel || profile.linkedinUrl}
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="profile-highlights" aria-label="Filter projects by specialty">
+        {profileFilters.map((filter) => (
+          <button
+            className={`highlight ${activeFilter === filter.id ? 'is-active' : ''}`}
+            key={filter.id}
+            onClick={() => {
+              onFilterChange(filter.id);
+              document.querySelector('#projects')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            type="button"
+            aria-pressed={activeFilter === filter.id}
+          >
+            <span className="highlight-ring">
+              <span className="highlight-icon">
+                <Icon name={filter.icon} size={25} />
+              </span>
+            </span>
+            <span>{filter.label}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -1,16 +1,20 @@
 {
-  "name": "landingpage2",
+  "name": "sydney-bao-portfolio",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://<SydneyBao>.github.io/<LandingPageReact>",
+  "homepage": "https://sydneybao.com",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --ext js,jsx,mjs --report-unused-disable-directives --max-warnings 0",
+    "test:social": "node tests/socialApi.firebase.test.mjs",
+    "test:content": "node tests/contentApi.firebase.test.mjs && node tests/projectVisibility.test.mjs",
+    "test:firebase": "npm run test:social && npm run test:content",
+    "test:media": "node tests/mediaApi.test.mjs && node tests/mediaStatus.test.mjs && node tests/localMediaGit.test.mjs && node tests/localCaptureDispatch.test.mjs && node tests/pendingCapture.test.mjs && node tests/captureInteractions.test.mjs && node tests/viteConfig.test.mjs",
     "preview": "vite preview",
-     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "bootstrap": "^5.3.3",
