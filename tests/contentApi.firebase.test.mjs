@@ -32,6 +32,7 @@ let batchGetRequests = 0;
 let legacyDocumentGets = 0;
 let projectListRequests = 0;
 let deletionListRequests = 0;
+let identityRequests = 0;
 let clock = 0;
 
 function timestamp() {
@@ -133,6 +134,15 @@ globalThis.fetch = async (input, options = {}) => {
 
   if (url.hostname === 'identitytoolkit.googleapis.com') {
     assert.equal(method, 'POST');
+    assert.equal(url.pathname, '/v1/accounts:signInWithPassword');
+    assert.equal(url.searchParams.get('key'), 'test-api-key');
+    assert.equal(options.headers['Content-Type'], 'application/json');
+    assert.deepEqual(JSON.parse(options.body), {
+      email: 'owner@example.com',
+      password: 'test-password',
+      returnSecureToken: true,
+    });
+    identityRequests += 1;
     return json({
       idToken: 'owner-id-token',
       refreshToken: 'owner-refresh-token',
@@ -216,6 +226,23 @@ assert.equal(deletionListRequests, 1);
 assert.equal(legacyDocumentGets, 0, 'an absent profile should not emit an HTTP 404');
 
 await content.signInOwner('owner@example.com', 'test-password');
+assert.equal(identityRequests, 1);
+
+const missingConfigSource = source
+  .replaceAll("'test-api-key'", "''")
+  .replaceAll("'test-project'", "''");
+const missingConfigUrl = `data:text/javascript;base64,${Buffer.from(missingConfigSource).toString('base64')}`;
+const missingConfigContent = await import(missingConfigUrl);
+await assert.rejects(
+  missingConfigContent.signInOwner('owner@example.com', 'test-password'),
+  /Firebase sign-in configuration is missing/,
+);
+await assert.rejects(
+  missingConfigContent.sendOwnerPasswordReset('owner@example.com'),
+  /Firebase sign-in configuration is missing/,
+);
+assert.equal(await missingConfigContent.restoreOwnerSession(), null);
+assert.equal(identityRequests, 1, 'missing configuration must fail before an auth request');
 
 await content.saveProjectContent({ slug: 'new-project', title: 'New project' });
 assert.equal(batchGetRequests, 2, 'the create preflight should use batchGet');

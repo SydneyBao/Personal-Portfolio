@@ -1,11 +1,11 @@
 import { DEFAULT_RESUME_URL } from '../data/profile';
 
-const FIREBASE_API_KEY = import.meta.env.VITE_FIREBASE_API_KEY || '';
-const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID || '';
+const FIREBASE_API_KEY = String(import.meta.env.VITE_FIREBASE_API_KEY || '').trim();
+const FIREBASE_PROJECT_ID = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim();
 
 export const OWNER_EMAIL = (
   import.meta.env.VITE_FIREBASE_OWNER_EMAIL || 's.bao2115@gmail.com'
-).toLowerCase();
+).trim().toLowerCase();
 
 const OWNER_SESSION_KEY = 'sydney-portfolio-owner-session-v1';
 const REQUEST_TIMEOUT_MS = 12000;
@@ -15,6 +15,15 @@ const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/${DATABASE_PATH}
 let memorySession = null;
 
 export const isContentCloudConfigured = Boolean(FIREBASE_API_KEY && FIREBASE_PROJECT_ID);
+
+const FIREBASE_CONFIGURATION_ERROR = (
+  'Firebase sign-in configuration is missing. Restart the app after setting '
+  + 'VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID.'
+);
+
+function requireContentCloudConfiguration() {
+  if (!isContentCloudConfigured) throw new Error(FIREBASE_CONFIGURATION_ERROR);
+}
 
 function isSafePortfolioResumePath(value) {
   const hasUnsafeCharacter = Array.from(value).some((character) => {
@@ -94,6 +103,9 @@ export function signOutOwner() {
 
 function friendlyMessage(data, status) {
   const raw = data?.error?.message || data?.message || '';
+  if (/method doesn(?:'|’)t allow unregistered callers/i.test(raw)) {
+    return FIREBASE_CONFIGURATION_ERROR;
+  }
   const code = typeof raw === 'string' ? raw.split(' : ')[0] : '';
   const messages = {
     EMAIL_NOT_FOUND: 'No portfolio owner account exists for that email.',
@@ -138,6 +150,7 @@ async function fetchJson(url, options = {}) {
 }
 
 function withApiKey(url) {
+  requireContentCloudConfiguration();
   const target = new URL(url);
   target.searchParams.set('key', FIREBASE_API_KEY);
   return target.toString();
@@ -181,6 +194,10 @@ async function refreshOwnerSession(previous) {
 }
 
 export async function restoreOwnerSession() {
+  if (!isContentCloudConfigured) {
+    signOutOwner();
+    return null;
+  }
   const session = readStoredSession();
   if (!session || session.projectId !== FIREBASE_PROJECT_ID || session.email !== OWNER_EMAIL) {
     signOutOwner();
@@ -199,6 +216,7 @@ export async function restoreOwnerSession() {
 }
 
 export async function signInOwner(email, password) {
+  requireContentCloudConfiguration();
   const normalizedEmail = email.trim().toLowerCase();
   if (normalizedEmail !== OWNER_EMAIL) throw new Error('Use the portfolio owner email to sign in.');
 
@@ -214,6 +232,7 @@ export async function signInOwner(email, password) {
 }
 
 export async function sendOwnerPasswordReset(email) {
+  requireContentCloudConfiguration();
   const normalizedEmail = email.trim().toLowerCase();
   if (normalizedEmail !== OWNER_EMAIL) throw new Error('Use the portfolio owner email.');
 
