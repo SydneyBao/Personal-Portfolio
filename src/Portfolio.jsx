@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './components/Icon';
+import Timeline from './components/Timeline';
 
 function formatCount(value) {
   return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -518,14 +519,25 @@ function ProjectModal({ project, index, total, onClose, onNavigate, social }) {
   );
 }
 
-function Portfolio({ activeFilter, projects, social }) {
-  const [selectedIndex, setSelectedIndex] = useState(null);
+function Portfolio({
+  activeFilter,
+  onFilterChange,
+  onViewChange,
+  projects,
+  social,
+  view,
+}) {
+  const [selectedProjectSlug, setSelectedProjectSlug] = useState(null);
 
   const filteredProjects = useMemo(
     () => activeFilter === 'all'
       ? projects
       : projects.filter((project) => project.categories.includes(activeFilter)),
     [activeFilter, projects],
+  );
+  const availableProjectSlugs = useMemo(
+    () => new Set(projects.map(({ slug }) => slug)),
+    [projects],
   );
 
   const setProjectHash = useCallback((slug) => {
@@ -536,13 +548,18 @@ function Portfolio({ activeFilter, projects, social }) {
     );
   }, []);
 
-  const openModal = useCallback((index) => {
-    setSelectedIndex(index);
-    setProjectHash(filteredProjects[index].slug);
-  }, [filteredProjects, setProjectHash]);
+  const modalProjects = view === 'timeline' ? projects : filteredProjects;
+  const selectedIndex = selectedProjectSlug
+    ? modalProjects.findIndex(({ slug }) => slug === selectedProjectSlug)
+    : -1;
+
+  const openModal = useCallback((slug) => {
+    setSelectedProjectSlug(slug);
+    setProjectHash(slug);
+  }, [setProjectHash]);
 
   const closeModal = useCallback(() => {
-    setSelectedIndex(null);
+    setSelectedProjectSlug(null);
     if (window.location.hash.startsWith('#project-')) {
       window.history.replaceState(
         null,
@@ -553,77 +570,190 @@ function Portfolio({ activeFilter, projects, social }) {
   }, []);
 
   const navigateModal = useCallback((direction) => {
-    setSelectedIndex((current) => {
-      if (current === null) return null;
-      const next = (current + direction + filteredProjects.length) % filteredProjects.length;
-      setProjectHash(filteredProjects[next].slug);
-      return next;
-    });
-  }, [filteredProjects, setProjectHash]);
+    if (selectedIndex < 0 || modalProjects.length === 0) return;
+    const next = (selectedIndex + direction + modalProjects.length) % modalProjects.length;
+    const nextSlug = modalProjects[next].slug;
+    setSelectedProjectSlug(nextSlug);
+    setProjectHash(nextSlug);
+  }, [modalProjects, selectedIndex, setProjectHash]);
 
   useEffect(() => {
-    setSelectedIndex(null);
-  }, [activeFilter]);
+    if (
+      view === 'projects'
+      && selectedProjectSlug
+      && !filteredProjects.some(({ slug }) => slug === selectedProjectSlug)
+    ) {
+      setSelectedProjectSlug(null);
+    }
+  }, [filteredProjects, selectedProjectSlug, view]);
 
   useEffect(() => {
-    const syncModalWithHash = () => {
-      const hash = window.location.hash.replace('#project-', '');
-      const initialIndex = filteredProjects.findIndex(({ slug }) => slug === hash);
-      if (initialIndex >= 0) setSelectedIndex(initialIndex);
+    const syncViewWithHash = () => {
+      const { hash } = window.location;
+      if (hash === '#timeline') {
+        setSelectedProjectSlug(null);
+        onViewChange('timeline');
+        return;
+      }
+      if (hash === '#projects') {
+        setSelectedProjectSlug(null);
+        onViewChange('projects');
+        return;
+      }
+      if (hash.startsWith('#project-')) {
+        const slug = hash.replace('#project-', '');
+        if (!projects.some((project) => project.slug === slug)) {
+          setSelectedProjectSlug(null);
+          onViewChange('projects');
+          return;
+        }
+        if (!filteredProjects.some((project) => project.slug === slug)) onFilterChange('all');
+        onViewChange('projects');
+        setSelectedProjectSlug(slug);
+        return;
+      }
+      setSelectedProjectSlug(null);
     };
 
-    syncModalWithHash();
-    window.addEventListener('hashchange', syncModalWithHash);
-    return () => window.removeEventListener('hashchange', syncModalWithHash);
-  }, [filteredProjects]);
+    syncViewWithHash();
+    window.addEventListener('hashchange', syncViewWithHash);
+    return () => window.removeEventListener('hashchange', syncViewWithHash);
+  }, [filteredProjects, onFilterChange, onViewChange, projects]);
+
+  const selectView = useCallback((nextView) => {
+    setSelectedProjectSlug(null);
+    onViewChange(nextView);
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}#${nextView}`,
+    );
+  }, [onViewChange]);
+
+  const handleTabKeyDown = (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabOrder = ['projects', 'timeline'];
+    const currentView = event.currentTarget.id === 'portfolio-timeline-tab'
+      ? 'timeline'
+      : 'projects';
+    const currentIndex = tabOrder.indexOf(currentView);
+    const nextView = event.key === 'Home'
+      ? tabOrder[0]
+      : event.key === 'End'
+        ? tabOrder.at(-1)
+        : tabOrder[(
+          currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabOrder.length
+        ) % tabOrder.length];
+    selectView(nextView);
+    document.querySelector(`#portfolio-${nextView}-tab`)?.focus();
+  };
+
+  const openRelatedProject = useCallback((slug) => {
+    if (!projects.some((project) => project.slug === slug)) return;
+    onFilterChange('all');
+    onViewChange('projects');
+    setSelectedProjectSlug(slug);
+    setProjectHash(slug);
+  }, [onFilterChange, onViewChange, projects, setProjectHash]);
 
   const activeLabel = activeFilter === 'all'
     ? 'All projects'
     : `${activeFilter === 'ai' ? 'AI + ML' : activeFilter[0].toUpperCase() + activeFilter.slice(1)} projects`;
 
   return (
-    <section className="projects shell" id="projects" aria-labelledby="projects-heading">
+    <section className="projects shell" id="projects" aria-labelledby="portfolio-heading">
+      <h2 className="visually-hidden" id="portfolio-heading">Portfolio</h2>
       <div className="projects-tabbar">
-        <div className="projects-tab is-active">
-          <Icon name="grid" size={14} />
-          <span id="projects-heading">Projects</span>
+        <div aria-label="Portfolio views" className="projects-tabs" role="tablist">
+          <button
+            aria-controls="portfolio-projects-panel"
+            aria-selected={view === 'projects'}
+            className={`projects-tab ${view === 'projects' ? 'is-active' : ''}`}
+            id="portfolio-projects-tab"
+            onClick={() => selectView('projects')}
+            onKeyDown={handleTabKeyDown}
+            role="tab"
+            tabIndex={view === 'projects' ? 0 : -1}
+            type="button"
+          >
+            <Icon name="grid" size={14} />
+            <span>Projects</span>
+          </button>
+          <button
+            aria-controls="portfolio-timeline-panel"
+            aria-selected={view === 'timeline'}
+            className={`projects-tab ${view === 'timeline' ? 'is-active' : ''}`}
+            id="portfolio-timeline-tab"
+            onClick={() => selectView('timeline')}
+            onKeyDown={handleTabKeyDown}
+            role="tab"
+            tabIndex={view === 'timeline' ? 0 : -1}
+            type="button"
+          >
+            <Icon name="activity" size={15} />
+            <span>Timeline</span>
+          </button>
         </div>
-        <p>{activeLabel} · {filteredProjects.length}</p>
+        <p aria-live="polite">
+          {view === 'projects' ? `${activeLabel} · ${filteredProjects.length}` : 'LinkedIn archive'}
+        </p>
       </div>
 
-      <div className="project-grid">
-        {filteredProjects.map((project, index) => {
-          const projectStats = social.stats[project.slug] || { likes: 0, comments: 0, liked: false };
-          return (
-            <button
-              className="project-tile"
-              key={project.slug}
-              onClick={() => openModal(index)}
-              type="button"
-              aria-label={`Open ${project.title}. ${projectStats.likes} likes and ${projectStats.comments} comments.`}
-              aria-haspopup="dialog"
-            >
-              <img src={project.thumbnail} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
-              <span className="tile-shade" />
-              <span className="tile-index">{String(index + 1).padStart(2, '0')}</span>
-              <span className="tile-copy">
-                <span>{project.eyebrow}</span>
-                <strong>{project.title}</strong>
-              </span>
-              <span className="tile-stats" aria-hidden="true">
-                <span><Icon name="heart" filled size={20} /> {formatCount(projectStats.likes)}</span>
-                <span><Icon name="comment" filled size={19} /> {formatCount(projectStats.comments)}</span>
-              </span>
-            </button>
-          );
-        })}
+      <div
+        aria-labelledby="portfolio-projects-tab"
+        hidden={view !== 'projects'}
+        id="portfolio-projects-panel"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        <div className="project-grid">
+          {filteredProjects.map((project, index) => {
+            const projectStats = social.stats[project.slug] || { likes: 0, comments: 0, liked: false };
+            return (
+              <button
+                className="project-tile"
+                key={project.slug}
+                onClick={() => openModal(project.slug)}
+                type="button"
+                aria-label={`Open ${project.title}. ${projectStats.likes} likes and ${projectStats.comments} comments.`}
+                aria-haspopup="dialog"
+              >
+                <img src={project.thumbnail} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
+                <span className="tile-shade" />
+                <span className="tile-index">{String(index + 1).padStart(2, '0')}</span>
+                <span className="tile-copy">
+                  <span>{project.eyebrow}</span>
+                  <strong>{project.title}</strong>
+                </span>
+                <span className="tile-stats" aria-hidden="true">
+                  <span><Icon name="heart" filled size={20} /> {formatCount(projectStats.likes)}</span>
+                  <span><Icon name="comment" filled size={19} /> {formatCount(projectStats.comments)}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {selectedIndex !== null && filteredProjects[selectedIndex] && (
+      <div
+        aria-labelledby="portfolio-timeline-tab"
+        hidden={view !== 'timeline'}
+        id="portfolio-timeline-panel"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        <Timeline
+          availableProjectSlugs={availableProjectSlugs}
+          onOpenProject={openRelatedProject}
+        />
+      </div>
+
+      {selectedIndex >= 0 && modalProjects[selectedIndex] && (
         <ProjectModal
-          project={filteredProjects[selectedIndex]}
+          project={modalProjects[selectedIndex]}
           index={selectedIndex}
-          total={filteredProjects.length}
+          total={modalProjects.length}
           onClose={closeModal}
           onNavigate={navigateModal}
           social={social}

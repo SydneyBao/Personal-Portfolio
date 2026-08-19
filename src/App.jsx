@@ -16,6 +16,11 @@ import useSocialFeed from './hooks/useSocialFeed';
 
 function App() {
   const [activeFilter, setActiveFilter] = useState('all');
+  const [portfolioView, setPortfolioView] = useState(() => (
+    typeof window !== 'undefined' && window.location.hash === '#timeline'
+      ? 'timeline'
+      : 'projects'
+  ));
   const [adminOpen, setAdminOpen] = useState(false);
   const [ownerSession, setOwnerSession] = useState(null);
   const sessionChangeSequence = useRef(0);
@@ -23,6 +28,17 @@ function App() {
   const social = useSocialFeed(content.projects);
   const openAdmin = useCallback(() => setAdminOpen(true), []);
   const closeAdmin = useCallback(() => setAdminOpen(false), []);
+  const handleFilterChange = useCallback((filter) => {
+    setActiveFilter(filter);
+    setPortfolioView('projects');
+    if (typeof window !== 'undefined' && window.location.hash === '#timeline') {
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}#projects`,
+      );
+    }
+  }, []);
   const handleOwnerSessionChange = useCallback((session) => {
     sessionChangeSequence.current += 1;
     setOwnerSession(session || null);
@@ -51,12 +67,19 @@ function App() {
       <main>
         <Home
           activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
+          onFilterChange={handleFilterChange}
           profile={content.profile}
           projects={content.projects}
           social={social}
         />
-        <Portfolio activeFilter={activeFilter} projects={content.projects} social={social} />
+        <Portfolio
+          activeFilter={activeFilter}
+          onFilterChange={handleFilterChange}
+          onViewChange={setPortfolioView}
+          projects={content.projects}
+          social={social}
+          view={portfolioView}
+        />
       </main>
       <Footer mode={social.mode} status={social.status} />
       <div className="ambient ambient-one" aria-hidden="true" />
