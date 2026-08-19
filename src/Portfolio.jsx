@@ -39,19 +39,26 @@ const INTERACTIVE_TARGETS = [
   '[role="combobox"]',
 ].join(', ');
 
+const SEEDED_COMMENT_ID_PATTERN = /^demo-\d{8}-comment-/i;
+
 function isInteractiveTarget(target) {
   return target instanceof Element && Boolean(target.closest(INTERACTIVE_TARGETS));
 }
 
 function Comment({ comment }) {
-  const initial = (comment.display_name || 'G').slice(0, 1).toUpperCase();
+  const displayName = comment.display_name || 'Guest';
+  const initial = displayName.replace(/^@+/, '').slice(0, 1).toUpperCase() || 'G';
+  const isSample = SEEDED_COMMENT_ID_PATTERN.test(String(comment.id || ''));
 
   return (
     <li className="comment">
       <span className="comment-avatar" aria-hidden="true">{initial}</span>
       <div>
         <p>
-          <strong>{comment.display_name}</strong>{' '}
+          <strong>{displayName}</strong>
+          {isSample && (
+            <span aria-label="Sample comment" className="comment-sample-badge">Sample</span>
+          )}{' '}
           <span>{comment.body}</span>
         </p>
         <time dateTime={comment.created_at}>{formatTime(comment.created_at)}</time>
