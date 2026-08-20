@@ -400,18 +400,22 @@ export async function fetchPortfolioContent() {
       deletedTimelineEntryIds: [],
     };
   }
+
+  const timelineContent = Promise.all([
+    listPublishedTimelineEntries(),
+    listDeletedTimelineEntries(),
+  ]).catch(() => [[], []]);
+
   const [
     profile,
     projectDocuments,
     deletedProjectDocuments,
-    timelineDocuments,
-    deletedTimelineDocuments,
+    [timelineDocuments, deletedTimelineDocuments],
   ] = await Promise.all([
     getDocument('portfolioSite/profile'),
     listPublishedProjects(),
     listDeletedProjects(),
-    listPublishedTimelineEntries(),
-    listDeletedTimelineEntries(),
+    timelineContent,
   ]);
   return {
     profile: normalizeProfileContent(profile?.data),

@@ -44,6 +44,7 @@ let projectListRequests = 0;
 let deletionListRequests = 0;
 let timelineListRequests = 0;
 let timelineDeletionListRequests = 0;
+let forbiddenTimelineCollection = '';
 let identityRequests = 0;
 let clock = 0;
 
@@ -221,6 +222,15 @@ globalThis.fetch = async (input, options = {}) => {
       timelineListRequests += 1;
       assert.equal(payload.structuredQuery.where.fieldFilter.field.fieldPath, 'status');
       assert.equal(payload.structuredQuery.where.fieldFilter.value.stringValue, 'published');
+      if (forbiddenTimelineCollection === collectionId) {
+        return json({
+          error: {
+            code: 403,
+            message: 'Missing or insufficient permissions.',
+            status: 'PERMISSION_DENIED',
+          },
+        }, 403);
+      }
       return json([...documents.entries()]
         .filter(([path, value]) => path.startsWith('portfolioTimeline/') && value.status === 'published')
         .map(([path, value]) => ({ document: firestoreDocument(path, value) })));
@@ -405,5 +415,31 @@ assert.equal(
 assert.equal(documents.has('portfolioTimeline/new-milestone'), false);
 assert.equal(documents.get('portfolioDeletedTimeline/new-milestone').id, 'new-milestone');
 assert.equal(typeof documents.get('portfolioDeletedTimeline/new-milestone').deletedAt, 'string');
+
+const savedResumeUrl = '/portfolio/uploads/profile/document-saved.pdf';
+documents.set('portfolioSite/profile', {
+  displayName: 'Sydney Bao',
+  resumeUrl: savedResumeUrl,
+});
+forbiddenTimelineCollection = 'portfolioTimeline';
+const withoutTimelinePermissions = await content.fetchPortfolioContent();
+forbiddenTimelineCollection = '';
+
+assert.equal(
+  withoutTimelinePermissions.profile.resumeUrl,
+  savedResumeUrl,
+  'a timeline permission failure must not revert the saved profile',
+);
+assert.deepEqual(
+  withoutTimelinePermissions.projects.map(({ slug }) => slug),
+  ['new-project'],
+  'a timeline permission failure must not hide saved projects',
+);
+assert.deepEqual(withoutTimelinePermissions.timelineEntries, []);
+assert.deepEqual(
+  withoutTimelinePermissions.deletedTimelineEntryIds,
+  [],
+  'timeline entries and tombstones should fall back together',
+);
 
 console.log('Firebase content adapter tests passed');
