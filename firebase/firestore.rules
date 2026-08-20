@@ -189,6 +189,157 @@ service cloud.firestore {
         && request.resource.data.deletedAt == request.time;
     }
 
+    function validTimelineId(entryId) {
+      return entryId is string
+        && entryId.size() >= 1
+        && entryId.size() <= 64
+        && entryId.matches('^[a-z0-9]+(-[a-z0-9]+)*$');
+    }
+
+    function validTimelineDate(value) {
+      return value is string
+        && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])$');
+    }
+
+    function validHttpsUrl(value) {
+      return value is string
+        && value.size() >= 1
+        && value.size() <= 1000
+        && value.matches('^https://.*');
+    }
+
+    function validOptionalHttpsUrl(value) {
+      return value is string
+        && value.size() <= 1000
+        && (value == '' || value.matches('^https://.*'));
+    }
+
+    function validTimelineYearAt(years, index) {
+      return years.size() <= index
+        || (
+          years[index] is int
+          && years[index] >= 1900
+          && years[index] <= 2100
+        );
+    }
+
+    function validTimelineHighlightAt(highlights, index) {
+      return highlights.size() <= index
+        || (
+          highlights[index] is string
+          && highlights[index].trim().size() >= 1
+          && highlights[index].size() <= 240
+        );
+    }
+
+    function validTimelineEntry(entryId) {
+      return request.resource.data.keys().hasAll([
+          'id', 'kind', 'title', 'organization', 'dateLabel', 'startDate',
+          'sortDate', 'years', 'description', 'highlights', 'relatedProjectSlug',
+          'externalUrl', 'externalLabel', 'sourceUrl', 'status', 'schemaVersion',
+          'revision', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id', 'kind', 'title', 'organization', 'dateLabel', 'startDate',
+          'sortDate', 'years', 'description', 'highlights', 'relatedProjectSlug',
+          'externalUrl', 'externalLabel', 'sourceUrl', 'status', 'schemaVersion',
+          'revision', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.id == entryId
+        && validTimelineId(request.resource.data.id)
+        && request.resource.data.kind in [
+          'work', 'project', 'research', 'award', 'education', 'leadership',
+          'service', 'credential'
+        ]
+        && request.resource.data.title is string
+        && request.resource.data.title.trim().size() >= 1
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.organization is string
+        && request.resource.data.organization.size() <= 120
+        && request.resource.data.dateLabel is string
+        && request.resource.data.dateLabel.trim().size() >= 1
+        && request.resource.data.dateLabel.size() <= 80
+        && validTimelineDate(request.resource.data.startDate)
+        && validTimelineDate(request.resource.data.sortDate)
+        && request.resource.data.years is list
+        && request.resource.data.years.size() >= 1
+        && request.resource.data.years.size() <= 25
+        && validTimelineYearAt(request.resource.data.years, 0)
+        && validTimelineYearAt(request.resource.data.years, 1)
+        && validTimelineYearAt(request.resource.data.years, 2)
+        && validTimelineYearAt(request.resource.data.years, 3)
+        && validTimelineYearAt(request.resource.data.years, 4)
+        && validTimelineYearAt(request.resource.data.years, 5)
+        && validTimelineYearAt(request.resource.data.years, 6)
+        && validTimelineYearAt(request.resource.data.years, 7)
+        && validTimelineYearAt(request.resource.data.years, 8)
+        && validTimelineYearAt(request.resource.data.years, 9)
+        && validTimelineYearAt(request.resource.data.years, 10)
+        && validTimelineYearAt(request.resource.data.years, 11)
+        && validTimelineYearAt(request.resource.data.years, 12)
+        && validTimelineYearAt(request.resource.data.years, 13)
+        && validTimelineYearAt(request.resource.data.years, 14)
+        && validTimelineYearAt(request.resource.data.years, 15)
+        && validTimelineYearAt(request.resource.data.years, 16)
+        && validTimelineYearAt(request.resource.data.years, 17)
+        && validTimelineYearAt(request.resource.data.years, 18)
+        && validTimelineYearAt(request.resource.data.years, 19)
+        && validTimelineYearAt(request.resource.data.years, 20)
+        && validTimelineYearAt(request.resource.data.years, 21)
+        && validTimelineYearAt(request.resource.data.years, 22)
+        && validTimelineYearAt(request.resource.data.years, 23)
+        && validTimelineYearAt(request.resource.data.years, 24)
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 1200
+        && request.resource.data.highlights is list
+        && request.resource.data.highlights.size() <= 12
+        && validTimelineHighlightAt(request.resource.data.highlights, 0)
+        && validTimelineHighlightAt(request.resource.data.highlights, 1)
+        && validTimelineHighlightAt(request.resource.data.highlights, 2)
+        && validTimelineHighlightAt(request.resource.data.highlights, 3)
+        && validTimelineHighlightAt(request.resource.data.highlights, 4)
+        && validTimelineHighlightAt(request.resource.data.highlights, 5)
+        && validTimelineHighlightAt(request.resource.data.highlights, 6)
+        && validTimelineHighlightAt(request.resource.data.highlights, 7)
+        && validTimelineHighlightAt(request.resource.data.highlights, 8)
+        && validTimelineHighlightAt(request.resource.data.highlights, 9)
+        && validTimelineHighlightAt(request.resource.data.highlights, 10)
+        && validTimelineHighlightAt(request.resource.data.highlights, 11)
+        && request.resource.data.relatedProjectSlug is string
+        && (
+          request.resource.data.relatedProjectSlug == ''
+          || validTimelineId(request.resource.data.relatedProjectSlug)
+        )
+        && validOptionalHttpsUrl(request.resource.data.externalUrl)
+        && request.resource.data.externalLabel is string
+        && request.resource.data.externalLabel.size() <= 80
+        && (
+          (
+            request.resource.data.externalUrl == ''
+            && request.resource.data.externalLabel == ''
+          )
+          || (
+            request.resource.data.externalUrl != ''
+            && request.resource.data.externalLabel.trim().size() >= 1
+          )
+        )
+        && validHttpsUrl(request.resource.data.sourceUrl)
+        && request.resource.data.status == 'published'
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.revision is int
+        && request.resource.data.revision >= 1
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function validDeletedTimelineEntry(entryId) {
+      return request.resource.data.keys().hasAll(['id', 'deletedAt'])
+        && request.resource.data.keys().hasOnly(['id', 'deletedAt'])
+        && request.resource.data.id == entryId
+        && validTimelineId(entryId)
+        && request.resource.data.deletedAt == request.time;
+    }
+
     function beforeCount(projectId, field) {
       let path = /databases/$(database)/documents/portfolioProjects/$(projectId);
       return exists(path) ? get(path).data.get(field, 0) : 0;
@@ -298,6 +449,27 @@ service cloud.firestore {
       allow list: if request.query.limit != null && request.query.limit <= 100;
       allow create, update: if isOwner() && validDeletedProject(projectId);
       allow delete: if false;
+    }
+
+    match /portfolioTimeline/{entryId} {
+      allow get: if isOwner() || resource.data.status == 'published';
+      allow list: if request.query.limit != null
+        && request.query.limit <= 100
+        && (isOwner() || resource.data.status == 'published');
+      allow create: if isOwner()
+        && validTimelineEntry(entryId)
+        && validRevisionOnCreate();
+      allow update: if isOwner()
+        && validTimelineEntry(entryId)
+        && validRevisionOnUpdate();
+      allow delete: if isOwner();
+    }
+
+    match /portfolioDeletedTimeline/{entryId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 100;
+      allow create, update: if isOwner() && validDeletedTimelineEntry(entryId);
+      allow delete: if isOwner();
     }
 
     match /portfolioProjects/{projectId} {

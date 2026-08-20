@@ -11,7 +11,7 @@
     "test:social": "node tests/socialApi.firebase.test.mjs",
     "test:content": "node tests/contentApi.firebase.test.mjs && node tests/projectVisibility.test.mjs",
     "test:firebase": "npm run test:social && npm run test:content",
-    "test:timeline": "node tests/timelineData.test.mjs",
+    "test:timeline": "node tests/timelineData.test.mjs && node tests/timelineContent.test.mjs",
     "test:media": "node tests/mediaApi.test.mjs && node tests/mediaStatus.test.mjs && node tests/localMediaGit.test.mjs && node tests/localCaptureDispatch.test.mjs && node tests/pendingCapture.test.mjs && node tests/captureInteractions.test.mjs && node tests/viteConfig.test.mjs",
     "preview": "vite preview",
     "predeploy": "npm run build",

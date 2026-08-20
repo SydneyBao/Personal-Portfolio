@@ -78,6 +78,7 @@ function App() {
           onViewChange={setPortfolioView}
           projects={content.projects}
           social={social}
+          timelineEntries={content.timelineEntries}
           view={portfolioView}
         />
       </main>
@@ -92,6 +93,7 @@ function App() {
           onSessionChange={handleOwnerSessionChange}
           profile={content.profile}
           projects={content.projects}
+          timelineEntries={content.timelineEntries}
         />
       )}
     </div>

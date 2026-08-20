@@ -1,4 +1,9 @@
 import { DEFAULT_RESUME_URL } from '../data/profile';
+import {
+  isValidTimelineEntryId,
+  slugifyTimelineEntryTitle,
+  validateTimelineEntry,
+} from './timelineContent';
 
 const FIREBASE_API_KEY = String(import.meta.env.VITE_FIREBASE_API_KEY || '').trim();
 const FIREBASE_PROJECT_ID = String(import.meta.env.VITE_FIREBASE_PROJECT_ID || '').trim();
@@ -15,6 +20,7 @@ const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/${DATABASE_PATH}
 let memorySession = null;
 
 export const isContentCloudConfigured = Boolean(FIREBASE_API_KEY && FIREBASE_PROJECT_ID);
+export const slugifyTimelineTitle = slugifyTimelineEntryTitle;
 
 const FIREBASE_CONFIGURATION_ERROR = (
   'Firebase sign-in configuration is missing. Restart the app after setting '
@@ -343,19 +349,76 @@ async function listDeletedProjects() {
   return (payload || []).map(({ document }) => decodeDocument(document)).filter(Boolean);
 }
 
+async function listPublishedTimelineEntries() {
+  const payload = await fetchJson(
+    withApiKey(`${FIRESTORE_BASE_URL}/documents:runQuery`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'portfolioTimeline' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'status' },
+              op: 'EQUAL',
+              value: { stringValue: 'published' },
+            },
+          },
+          limit: 100,
+        },
+      }),
+    },
+  );
+  return (payload || []).map(({ document }) => decodeDocument(document)).filter(Boolean);
+}
+
+async function listDeletedTimelineEntries() {
+  const payload = await fetchJson(
+    withApiKey(`${FIRESTORE_BASE_URL}/documents:runQuery`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'portfolioDeletedTimeline' }],
+          limit: 100,
+        },
+      }),
+    },
+  );
+  return (payload || []).map(({ document }) => decodeDocument(document)).filter(Boolean);
+}
+
 export async function fetchPortfolioContent() {
   if (!isContentCloudConfigured) {
-    return { profile: null, projects: [], deletedProjectSlugs: [] };
+    return {
+      profile: null,
+      projects: [],
+      deletedProjectSlugs: [],
+      timelineEntries: [],
+      deletedTimelineEntryIds: [],
+    };
   }
-  const [profile, projectDocuments, deletedProjectDocuments] = await Promise.all([
+  const [
+    profile,
+    projectDocuments,
+    deletedProjectDocuments,
+    timelineDocuments,
+    deletedTimelineDocuments,
+  ] = await Promise.all([
     getDocument('portfolioSite/profile'),
     listPublishedProjects(),
     listDeletedProjects(),
+    listPublishedTimelineEntries(),
+    listDeletedTimelineEntries(),
   ]);
   return {
     profile: normalizeProfileContent(profile?.data),
     projects: projectDocuments.map((document) => ({ ...document.data, slug: document.id })),
     deletedProjectSlugs: deletedProjectDocuments.map(({ id }) => id),
+    timelineEntries: timelineDocuments.map((document) => ({ ...document.data, id: document.id })),
+    deletedTimelineEntryIds: deletedTimelineDocuments.map(({ id }) => id),
   };
 }
 
@@ -379,7 +442,7 @@ async function commitWrites(session, writes) {
   );
 }
 
-async function saveDocument(path, data) {
+async function saveDocument(path, data, { deletePaths = [] } = {}) {
   const session = await currentOwnerSession();
   const existing = await getDocument(path, session.idToken);
   const documentData = {
@@ -399,7 +462,12 @@ async function saveDocument(path, data) {
   if (existing) write.updateMask = { fieldPaths: Object.keys(documentData) };
   else transforms.push({ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' });
 
-  await commitWrites(session, [write]);
+  await commitWrites(session, [
+    write,
+    ...deletePaths.map((deletePath) => ({
+      delete: `${DATABASE_PATH}/documents/${deletePath}`,
+    })),
+  ]);
 }
 
 export async function saveProfileContent(profile) {
@@ -421,6 +489,15 @@ export async function saveProjectContent(project) {
   await saveDocument(`portfolioContent/${project.slug}`, { ...project, status: 'published' });
 }
 
+export async function saveTimelineEntryContent(entry) {
+  const timelineEntry = validateTimelineEntry(entry);
+  await saveDocument(
+    `portfolioTimeline/${timelineEntry.id}`,
+    timelineEntry,
+    { deletePaths: [`portfolioDeletedTimeline/${timelineEntry.id}`] },
+  );
+}
+
 export async function deleteProjectContent(slug) {
   const projectSlug = String(slug || '').trim();
   if (!PROJECT_SLUG_PATTERN.test(projectSlug) || projectSlug.length > 64) {
@@ -436,6 +513,27 @@ export async function deleteProjectContent(slug) {
       update: {
         name: `${DATABASE_PATH}/documents/portfolioDeletedProjects/${projectSlug}`,
         fields: encodeFields({ slug: projectSlug }),
+      },
+      updateTransforms: [{ fieldPath: 'deletedAt', setToServerValue: 'REQUEST_TIME' }],
+    },
+  ]);
+}
+
+export async function deleteTimelineEntryContent(id) {
+  const entryId = String(id || '').trim();
+  if (!isValidTimelineEntryId(entryId)) {
+    throw new Error('Choose a valid timeline entry before deleting it.');
+  }
+
+  const session = await currentOwnerSession();
+  await commitWrites(session, [
+    {
+      delete: `${DATABASE_PATH}/documents/portfolioTimeline/${entryId}`,
+    },
+    {
+      update: {
+        name: `${DATABASE_PATH}/documents/portfolioDeletedTimeline/${entryId}`,
+        fields: encodeFields({ id: entryId }),
       },
       updateTransforms: [{ fieldPath: 'deletedAt', setToServerValue: 'REQUEST_TIME' }],
     },

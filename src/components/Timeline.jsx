@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { timelineEntries, timelineKindOptions } from '../data/timeline';
+import {
+  timelineEntries as defaultTimelineEntries,
+  timelineKindOptions,
+} from '../data/timeline';
 
 const kindLabels = Object.fromEntries(
   timelineKindOptions
@@ -39,15 +42,17 @@ function EntryActions({ availableProjectSlugs, entry, onOpenProject }) {
           <span aria-hidden="true"> ↗</span>
         </a>
       )}
-      <a
-        className="timeline-entry-source"
-        href={entry.sourceUrl}
-        rel="noreferrer"
-        target="_blank"
-      >
-        View on LinkedIn
-        <span aria-hidden="true"> ↗</span>
-      </a>
+      {entry.sourceUrl && (
+        <a
+          className="timeline-entry-source"
+          href={entry.sourceUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          View source
+          <span aria-hidden="true"> ↗</span>
+        </a>
+      )}
     </div>
   );
 }
@@ -97,36 +102,40 @@ function TimelineEntry({ availableProjectSlugs, entry, onOpenProject }) {
   );
 }
 
-function countForKind(kind) {
-  if (kind === 'all') return timelineEntries.length;
-  return timelineEntries.filter((entry) => entry.kind === kind).length;
+function countForKind(entries, kind) {
+  if (kind === 'all') return entries.length;
+  return entries.filter((entry) => entry.kind === kind).length;
 }
 
-function countForYear(year, kind) {
-  return timelineEntries.filter((entry) => (
+function countForYear(entries, year, kind) {
+  return entries.filter((entry) => (
     (kind === 'all' || entry.kind === kind) && entry.years.includes(year)
   )).length;
 }
 
-function Timeline({ availableProjectSlugs = new Set(), onOpenProject }) {
+function Timeline({
+  availableProjectSlugs = new Set(),
+  entries = defaultTimelineEntries,
+  onOpenProject,
+}) {
   const [activeKind, setActiveKind] = useState('all');
   const [activeYear, setActiveYear] = useState('all');
 
   const years = useMemo(() => (
-    [...new Set(timelineEntries.flatMap((entry) => entry.years))]
+    [...new Set(entries.flatMap((entry) => entry.years))]
       .sort((left, right) => right - left)
-  ), []);
+  ), [entries]);
 
-  const filteredEntries = useMemo(() => timelineEntries.filter((entry) => (
+  const filteredEntries = useMemo(() => entries.filter((entry) => (
     (activeKind === 'all' || entry.kind === activeKind)
     && (activeYear === 'all' || entry.years.includes(activeYear))
-  )), [activeKind, activeYear]);
+  )), [activeKind, activeYear, entries]);
 
   const selectKind = (kind) => {
     setActiveKind(kind);
     if (
       activeYear !== 'all'
-      && !timelineEntries.some((entry) => (
+      && !entries.some((entry) => (
         entry.years.includes(activeYear) && (kind === 'all' || entry.kind === kind)
       ))
     ) {
@@ -164,7 +173,7 @@ function Timeline({ availableProjectSlugs = new Set(), onOpenProject }) {
                 type="button"
               >
                 {option.label}
-                <span aria-hidden="true">{countForKind(option.id)}</span>
+                <span aria-hidden="true">{countForKind(entries, option.id)}</span>
               </button>
             ))}
           </div>
@@ -183,7 +192,7 @@ function Timeline({ availableProjectSlugs = new Set(), onOpenProject }) {
               All years
             </button>
             {years.map((year) => {
-              const count = countForYear(year, activeKind);
+              const count = countForYear(entries, year, activeKind);
               return (
                 <button
                   aria-label={`${year}, ${count} ${count === 1 ? 'milestone' : 'milestones'}`}

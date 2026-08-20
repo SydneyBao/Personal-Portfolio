@@ -8,16 +8,20 @@ import {
 import { createPortal } from 'react-dom';
 import Icon from './Icon';
 import {
+  deleteTimelineEntryContent,
   deleteProjectContent,
   OWNER_EMAIL,
   restoreOwnerSession,
   saveProfileContent,
   saveProjectContent,
+  saveTimelineEntryContent,
   sendOwnerPasswordReset,
   signInOwner,
   signOutOwner,
   slugifyProjectTitle,
+  slugifyTimelineTitle,
 } from '../lib/contentApi';
+import { timelineKindOptions, timelineSources } from '../data/timeline';
 import {
   clearPendingCapture,
   createPendingCapture,
@@ -32,6 +36,14 @@ const MEDIA_STATUS_POLL_INTERVAL_MS = 5000;
 const MEDIA_STATUS_TIMEOUT_MS = 20 * 60 * 1000;
 const CAPTURE_STATUS_TIMEOUT_MS = 40 * 60 * 1000;
 const FALLBACK_THUMBNAIL = '/portfolio/posters/sydney-ai-assistant.webp';
+const TIMELINE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const TIMELINE_MONTH_PATTERN = /^(?:19|20|21)\d{2}-(?:0[1-9]|1[0-2])$/;
+const TIMELINE_MAX_HIGHLIGHTS = 12;
+const TIMELINE_MAX_HIGHLIGHT_LENGTH = 240;
+const TIMELINE_MAX_YEARS = 25;
+const TIMELINE_KINDS = new Set(
+  timelineKindOptions.filter(({ id }) => id !== 'all').map(({ id }) => id),
+);
 const MEDIA_ENDPOINTS = {
   upload: ['/api/media-upload', '/.netlify/functions/media-upload'],
   capture: ['/api/capture-project', '/.netlify/functions/capture-project'],
@@ -398,6 +410,59 @@ function projectToDraft(project, fallbackOrder = 0) {
     accent: project?.accent || '#138c84',
     order: project?.order ?? fallbackOrder,
   };
+}
+
+function timelineToDraft(entry) {
+  const kind = String(entry?.kind || 'work');
+  return {
+    id: String(entry?.id || ''),
+    kind,
+    title: String(entry?.title || ''),
+    organization: String(entry?.organization || ''),
+    dateLabel: String(entry?.dateLabel || ''),
+    startDate: String(entry?.startDate || ''),
+    sortDate: String(entry?.sortDate || entry?.startDate || ''),
+    years: (Array.isArray(entry?.years) ? entry.years : []).join(', '),
+    description: String(entry?.description || ''),
+    highlights: (Array.isArray(entry?.highlights) ? entry.highlights : []).join('\n'),
+    relatedProjectSlug: String(entry?.relatedProjectSlug || ''),
+    externalUrl: String(entry?.externalUrl || ''),
+    externalLabel: String(entry?.externalLabel || ''),
+    sourceUrl: String(entry?.sourceUrl || timelineSources[kind] || ''),
+  };
+}
+
+function timelineHighlights(value) {
+  return value
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function timelineYears(value) {
+  const tokens = value
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (tokens.some((item) => !/^\d{4}$/.test(item))) return null;
+  const years = [...new Set(tokens.map(Number))].sort((left, right) => left - right);
+  if (years.some((year) => year < 1900 || year > 2100)) return null;
+  return years;
+}
+
+function isSafeTimelineUrl(value) {
+  if (!value) return true;
+  if (value.length > 1000) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:'
+      && Boolean(parsed.hostname)
+      && !parsed.username
+      && !parsed.password;
+  } catch {
+    return false;
+  }
 }
 
 function SignInForm({ onSignedIn }) {
@@ -1548,6 +1613,517 @@ function ProjectEditor({ onBusyChange, projects, onSaved }) {
   );
 }
 
+function timelineSavePayload(draft, entries, projects, isExisting) {
+  const id = draft.id.trim();
+  const title = draft.title.trim();
+  const organization = draft.organization.trim();
+  const dateLabel = draft.dateLabel.trim();
+  const startDate = draft.startDate.trim();
+  const sortDate = draft.sortDate.trim();
+  const description = draft.description.trim();
+  const highlights = timelineHighlights(draft.highlights);
+  const relatedProjectSlug = draft.relatedProjectSlug.trim();
+  const externalUrl = draft.externalUrl.trim();
+  const externalLabel = draft.externalLabel.trim();
+  const sourceUrl = draft.sourceUrl.trim();
+  const years = timelineYears(draft.years);
+
+  if (!TIMELINE_ID_PATTERN.test(id) || id.length > 64) {
+    throw new Error('Use lowercase letters, numbers, and hyphens for the timeline ID.');
+  }
+  if (!isExisting && entries.some((entry) => entry.id === id)) {
+    throw new Error('That timeline ID is already in use. Choose the existing milestone to update it.');
+  }
+  if (!TIMELINE_KINDS.has(draft.kind)) {
+    throw new Error('Choose a valid milestone type.');
+  }
+  if (!title || title.length > 120) {
+    throw new Error('Add a title no longer than 120 characters.');
+  }
+  if (organization.length > 120) {
+    throw new Error('Keep the organization under 120 characters.');
+  }
+  if (!dateLabel || dateLabel.length > 80) {
+    throw new Error('Add a display date no longer than 80 characters.');
+  }
+  if (!TIMELINE_MONTH_PATTERN.test(startDate) || !TIMELINE_MONTH_PATTERN.test(sortDate)) {
+    throw new Error('Choose valid start and sort months.');
+  }
+  if (sortDate.localeCompare(startDate) < 0) {
+    throw new Error('The sort month cannot come before the start month.');
+  }
+  if (!years || years.length < 1 || years.length > TIMELINE_MAX_YEARS) {
+    throw new Error(`Add between 1 and ${TIMELINE_MAX_YEARS} valid four-digit years.`);
+  }
+  if (!years.includes(Number(startDate.slice(0, 4))) || !years.includes(Number(sortDate.slice(0, 4)))) {
+    throw new Error('Filter years must include both the start year and sort year.');
+  }
+  if (description.length > 1200) {
+    throw new Error('Keep the description under 1,200 characters.');
+  }
+  if (
+    highlights.length > TIMELINE_MAX_HIGHLIGHTS
+    || highlights.some((highlight) => highlight.length > TIMELINE_MAX_HIGHLIGHT_LENGTH)
+  ) {
+    throw new Error(
+      `Use up to ${TIMELINE_MAX_HIGHLIGHTS} highlights, each under ${TIMELINE_MAX_HIGHLIGHT_LENGTH} characters.`,
+    );
+  }
+  if (
+    relatedProjectSlug
+    && !projects.some((project) => project.slug === relatedProjectSlug)
+  ) {
+    throw new Error('Choose an available related project or select none.');
+  }
+  if (!isSafeTimelineUrl(externalUrl) || !sourceUrl || !isSafeTimelineUrl(sourceUrl)) {
+    throw new Error('Timeline links must be full HTTPS URLs without embedded credentials.');
+  }
+  if (externalLabel.length > 80) {
+    throw new Error('Keep the external link label under 80 characters.');
+  }
+  if (Boolean(externalUrl) !== Boolean(externalLabel)) {
+    throw new Error('Add both an external URL and its link label, or leave both blank.');
+  }
+
+  return {
+    id,
+    kind: draft.kind,
+    title,
+    organization,
+    dateLabel,
+    startDate,
+    sortDate,
+    years,
+    description,
+    highlights,
+    relatedProjectSlug,
+    externalUrl,
+    externalLabel,
+    sourceUrl,
+  };
+}
+
+function TimelineEditor({ entries = [], onBusyChange, onSaved, projects = [] }) {
+  const [selectedId, setSelectedId] = useState('__new__');
+  const selectedEntry = useMemo(
+    () => entries.find((entry) => entry.id === selectedId),
+    [entries, selectedId],
+  );
+  const [draft, setDraft] = useState(() => timelineToDraft());
+  const [busyAction, setBusyAction] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState(false);
+  const [message, setMessage] = useState(null);
+  const deleteCancelRef = useRef(null);
+  const mountedRef = useRef(true);
+  const isExisting = Boolean(selectedEntry);
+  const editorLocked = Boolean(busyAction);
+  const missingRelatedProject = Boolean(
+    draft.relatedProjectSlug
+    && !projects.some((project) => project.slug === draft.relatedProjectSlug),
+  );
+
+  useEffect(() => {
+    onBusyChange(editorLocked);
+  }, [editorLocked, onBusyChange]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
+
+  useEffect(() => {
+    setDraft(timelineToDraft(selectedEntry));
+    setDeleteConfirmation(false);
+  }, [selectedEntry]);
+
+  useEffect(() => {
+    if (deleteConfirmation) deleteCancelRef.current?.focus();
+  }, [deleteConfirmation]);
+
+  const update = (field) => (event) => {
+    const value = event.target.value;
+    setMessage(null);
+    setDraft((current) => {
+      const next = { ...current, [field]: value };
+      if (
+        field === 'title'
+        && !isExisting
+        && (!current.id || current.id === slugifyTimelineTitle(current.title))
+      ) {
+        next.id = slugifyTimelineTitle(value);
+      }
+      if (field === 'kind') {
+        const currentDefaultSource = timelineSources[current.kind] || '';
+        if (!current.sourceUrl || current.sourceUrl === currentDefaultSource) {
+          next.sourceUrl = timelineSources[value] || '';
+        }
+      }
+      if (field === 'startDate') {
+        if (!current.sortDate || current.sortDate === current.startDate) next.sortDate = value;
+        if (!current.years.trim() && value) next.years = value.slice(0, 4);
+      }
+      return next;
+    });
+  };
+
+  const selectEntry = (id) => {
+    setMessage(null);
+    setDeleteConfirmation(false);
+    setSelectedId(id);
+    if (id === '__new__') setDraft(timelineToDraft());
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setMessage(null);
+
+    let entry;
+    try {
+      entry = timelineSavePayload(draft, entries, projects, isExisting);
+    } catch (error) {
+      setMessage({ error: true, text: error.message });
+      return;
+    }
+
+    onBusyChange(true);
+    setBusyAction('saving');
+    let entryWasSaved = false;
+    try {
+      await saveTimelineEntryContent(entry);
+      entryWasSaved = true;
+      await onSaved();
+      if (!mountedRef.current) return;
+      setSelectedId(entry.id);
+      setMessage({
+        error: false,
+        text: isExisting ? 'Timeline milestone updated.' : 'Timeline milestone published.',
+      });
+    } catch (error) {
+      if (!mountedRef.current) return;
+      setMessage({
+        error: true,
+        text: entryWasSaved
+          ? 'The milestone was saved, but the portfolio could not refresh. Reload the page to see it.'
+          : (error.message || 'The timeline milestone could not be saved.'),
+      });
+    } finally {
+      if (mountedRef.current) {
+        setBusyAction('');
+        onBusyChange(false);
+      }
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedEntry || editorLocked) return;
+    const { id, title } = selectedEntry;
+    let entryWasDeleted = false;
+
+    onBusyChange(true);
+    setBusyAction('deleting');
+    setMessage(null);
+    try {
+      await deleteTimelineEntryContent(id);
+      entryWasDeleted = true;
+      setDeleteConfirmation(false);
+      setSelectedId('__new__');
+      await onSaved();
+      if (!mountedRef.current) return;
+      setMessage({ error: false, text: `${title} was removed from the timeline.` });
+    } catch (error) {
+      if (!mountedRef.current) return;
+      setMessage({
+        error: true,
+        text: entryWasDeleted
+          ? `${title} was removed, but the portfolio could not refresh. Reload the page to see the change.`
+          : (error.message || 'The timeline milestone could not be deleted.'),
+      });
+    } finally {
+      if (mountedRef.current) {
+        setBusyAction('');
+        onBusyChange(false);
+      }
+    }
+  };
+
+  return (
+    <form className="admin-form" onSubmit={handleSubmit}>
+      <div className="admin-section-heading">
+        <div>
+          <p className="admin-eyebrow">Timeline</p>
+          <h3>{isExisting ? 'Edit a milestone' : 'Add a milestone'}</h3>
+        </div>
+        <div className="admin-section-actions">
+          {isExisting && (
+            <button
+              className="admin-danger"
+              disabled={editorLocked}
+              onClick={() => {
+                setMessage(null);
+                setDeleteConfirmation(true);
+              }}
+              type="button"
+            >
+              Delete milestone
+            </button>
+          )}
+          <button
+            className="admin-secondary"
+            disabled={editorLocked}
+            onClick={() => selectEntry('__new__')}
+            type="button"
+          >
+            New milestone
+          </button>
+        </div>
+      </div>
+
+      <label>
+        Choose milestone
+        <select
+          disabled={editorLocked}
+          onChange={(event) => selectEntry(event.target.value)}
+          value={selectedId}
+        >
+          <option value="__new__">+ New milestone</option>
+          {entries.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.dateLabel} — {entry.title}{entry.organization ? ` · ${entry.organization}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {deleteConfirmation && selectedEntry && (
+        <section
+          aria-labelledby="admin-delete-timeline-title"
+          className="admin-delete-confirmation"
+          role="group"
+        >
+          <div>
+            <strong id="admin-delete-timeline-title">Delete “{selectedEntry.title}”?</strong>
+            <p>The milestone will disappear from the public timeline. Related projects will not be deleted.</p>
+          </div>
+          <div className="admin-delete-actions">
+            <button
+              className="admin-secondary"
+              disabled={editorLocked}
+              onClick={() => setDeleteConfirmation(false)}
+              ref={deleteCancelRef}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="admin-danger admin-danger-solid"
+              disabled={editorLocked}
+              onClick={handleDelete}
+              type="button"
+            >
+              {busyAction === 'deleting' ? 'Deleting…' : 'Yes, delete milestone'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <div className="admin-field-grid">
+        <label>
+          Title
+          <input
+            disabled={editorLocked}
+            maxLength="120"
+            onChange={update('title')}
+            required
+            value={draft.title}
+          />
+        </label>
+        <label>
+          Timeline ID
+          <input
+            disabled={editorLocked}
+            maxLength="64"
+            onChange={update('id')}
+            pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+            readOnly={isExisting}
+            required
+            value={draft.id}
+          />
+          <small>Generated from the title. It cannot change after publishing.</small>
+        </label>
+      </div>
+
+      <div className="admin-field-grid">
+        <label>
+          Type
+          <select disabled={editorLocked} onChange={update('kind')} required value={draft.kind}>
+            {timelineKindOptions.filter(({ id }) => id !== 'all').map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Organization
+          <input
+            disabled={editorLocked}
+            maxLength="120"
+            onChange={update('organization')}
+            placeholder="Company, school, or organization"
+            value={draft.organization}
+          />
+        </label>
+      </div>
+
+      <label>
+        Display date
+        <input
+          disabled={editorLocked}
+          maxLength="80"
+          onChange={update('dateLabel')}
+          placeholder="Jun 2026 — Present"
+          required
+          value={draft.dateLabel}
+        />
+        <small>This is the date visitors see on the timeline.</small>
+      </label>
+
+      <div className="admin-field-grid">
+        <label>
+          Start month
+          <input
+            disabled={editorLocked}
+            onChange={update('startDate')}
+            required
+            type="month"
+            value={draft.startDate}
+          />
+        </label>
+        <label>
+          Sort month
+          <input
+            disabled={editorLocked}
+            onChange={update('sortDate')}
+            required
+            type="month"
+            value={draft.sortDate}
+          />
+          <small>Controls where this milestone appears, newest first.</small>
+        </label>
+      </div>
+
+      <label>
+        Filter years
+        <input
+          disabled={editorLocked}
+          onChange={update('years')}
+          placeholder="2024, 2025, 2026"
+          required
+          value={draft.years}
+        />
+        <small>Comma-separated years when this milestone should appear in the year filters.</small>
+      </label>
+
+      <label>
+        Description
+        <textarea
+          disabled={editorLocked}
+          maxLength="1200"
+          onChange={update('description')}
+          placeholder="A concise summary of the milestone"
+          rows="4"
+          value={draft.description}
+        />
+      </label>
+
+      <label>
+        Highlights
+        <textarea
+          disabled={editorLocked}
+          onChange={update('highlights')}
+          placeholder="One highlight per line"
+          rows="4"
+          value={draft.highlights}
+        />
+        <small>
+          Up to {TIMELINE_MAX_HIGHLIGHTS} highlights, one per line and no more than{' '}
+          {TIMELINE_MAX_HIGHLIGHT_LENGTH} characters each.
+        </small>
+      </label>
+
+      <label>
+        Related project
+        <select
+          disabled={editorLocked}
+          onChange={update('relatedProjectSlug')}
+          value={draft.relatedProjectSlug}
+        >
+          <option value="">No related project</option>
+          {missingRelatedProject && (
+            <option disabled value={draft.relatedProjectSlug}>
+              Missing project · {draft.relatedProjectSlug}
+            </option>
+          )}
+          {projects.map((project) => (
+            <option key={project.slug} value={project.slug}>{project.title}</option>
+          ))}
+        </select>
+        <small>Adds an “Open project post” button when that project is available.</small>
+      </label>
+
+      <fieldset className="admin-timeline-links" disabled={editorLocked}>
+        <legend>Links</legend>
+        <div className="admin-field-grid">
+          <label>
+            External URL
+            <input
+              onChange={update('externalUrl')}
+              placeholder="https://example.com"
+              type="url"
+              value={draft.externalUrl}
+            />
+          </label>
+          <label>
+            External link label
+            <input
+              maxLength="80"
+              onChange={update('externalLabel')}
+              placeholder="View project"
+              value={draft.externalLabel}
+            />
+          </label>
+        </div>
+        <label>
+          Source URL
+          <input
+            onChange={update('sourceUrl')}
+            placeholder="https://www.linkedin.com/in/..."
+            required
+            type="url"
+            value={draft.sourceUrl}
+          />
+          <small>Link to LinkedIn or another public source for this milestone.</small>
+        </label>
+      </fieldset>
+
+      {message && (
+        <p
+          className={message.error ? 'admin-error' : 'admin-save-message'}
+          role={message.error ? 'alert' : 'status'}
+        >
+          {message.text}
+        </p>
+      )}
+      <button className="admin-primary" disabled={editorLocked} type="submit">
+        {busyAction === 'saving'
+          ? 'Publishing…'
+          : (isExisting ? 'Update milestone' : 'Publish milestone')}
+      </button>
+    </form>
+  );
+}
+
 function AdminPanel({
   initialSession,
   onClose,
@@ -1555,6 +2131,7 @@ function AdminPanel({
   onSessionChange,
   profile,
   projects,
+  timelineEntries = [],
 }) {
   const closeRef = useRef(null);
   const editorBusyRef = useRef(false);
@@ -1649,16 +2226,19 @@ function AdminPanel({
           <SignInForm onSignedIn={handleSessionChange} />
         ) : (
           <div className="admin-workspace">
-            <aside className="admin-sidebar">
+            <aside aria-label="Portfolio editor sections" className="admin-sidebar">
               <div>
                 <p>Signed in as</p>
                 <strong>{session.email}</strong>
               </div>
-              <button className={section === 'profile' ? 'is-active' : ''} disabled={editorBusy} onClick={() => setSection('profile')} type="button">
+              <button aria-current={section === 'profile' ? 'page' : undefined} className={section === 'profile' ? 'is-active' : ''} disabled={editorBusy} onClick={() => setSection('profile')} type="button">
                 <Icon name="user" size={18} /> Profile
               </button>
-              <button className={section === 'projects' ? 'is-active' : ''} disabled={editorBusy} onClick={() => setSection('projects')} type="button">
+              <button aria-current={section === 'projects' ? 'page' : undefined} className={section === 'projects' ? 'is-active' : ''} disabled={editorBusy} onClick={() => setSection('projects')} type="button">
                 <Icon name="grid" size={18} /> Projects
+              </button>
+              <button aria-current={section === 'timeline' ? 'page' : undefined} className={section === 'timeline' ? 'is-active' : ''} disabled={editorBusy} onClick={() => setSection('timeline')} type="button">
+                <Icon name="activity" size={18} /> Timeline
               </button>
               <button
                 className="admin-signout"
@@ -1673,14 +2253,23 @@ function AdminPanel({
               </button>
             </aside>
             <div className="admin-editor">
-              {section === 'profile' ? (
+              {section === 'profile' && (
                 <ProfileEditor
                   onBusyChange={handleEditorBusyChange}
                   onSaved={onContentUpdated}
                   profile={profile}
                 />
-              ) : (
+              )}
+              {section === 'projects' && (
                 <ProjectEditor
+                  onBusyChange={handleEditorBusyChange}
+                  onSaved={onContentUpdated}
+                  projects={projects}
+                />
+              )}
+              {section === 'timeline' && (
+                <TimelineEditor
+                  entries={timelineEntries}
                   onBusyChange={handleEditorBusyChange}
                   onSaved={onContentUpdated}
                   projects={projects}

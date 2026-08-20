@@ -3,6 +3,7 @@ import { projects as defaultProjects } from '../data/projects';
 import { defaultProfile } from '../data/profile';
 import { fetchPortfolioContent, normalizeProfileContent } from '../lib/contentApi';
 import { suppressedProjectSlugs } from '../lib/projectVisibility';
+import { mergeTimelineEntries } from '../lib/timelineContent';
 
 const FALLBACK_MEDIA = '/portfolio/posters/sydney-ai-assistant.webp';
 
@@ -109,6 +110,8 @@ export default function usePortfolioContent() {
   const [remoteProfile, setRemoteProfile] = useState(null);
   const [remoteProjects, setRemoteProjects] = useState([]);
   const [deletedProjectSlugs, setDeletedProjectSlugs] = useState([]);
+  const [remoteTimelineEntries, setRemoteTimelineEntries] = useState([]);
+  const [deletedTimelineEntryIds, setDeletedTimelineEntryIds] = useState([]);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
 
@@ -119,6 +122,8 @@ export default function usePortfolioContent() {
       setRemoteProfile(content.profile);
       setRemoteProjects(content.projects);
       setDeletedProjectSlugs(content.deletedProjectSlugs || []);
+      setRemoteTimelineEntries(content.timelineEntries || []);
+      setDeletedTimelineEntryIds(content.deletedTimelineEntryIds || []);
       setError('');
       setStatus('ready');
     } catch (requestError) {
@@ -142,6 +147,17 @@ export default function usePortfolioContent() {
     () => mergeProjects(remoteProjects, deletedProjectSlugs),
     [deletedProjectSlugs, remoteProjects],
   );
+  const timelineEntries = useMemo(
+    () => mergeTimelineEntries(remoteTimelineEntries, deletedTimelineEntryIds),
+    [deletedTimelineEntryIds, remoteTimelineEntries],
+  );
 
-  return { profile, projects, status, error, refresh };
+  return {
+    profile,
+    projects,
+    timelineEntries,
+    status,
+    error,
+    refresh,
+  };
 }

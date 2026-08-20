@@ -2425,6 +2425,26 @@
   min-width: 126px;
 }
 
+.admin-timeline-links {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  padding: 15px 17px 18px;
+  margin: 0;
+  border: 1px solid #dde2dc;
+  border-radius: 13px;
+  background: #f8f9f6;
+}
+
+.admin-timeline-links legend {
+  padding: 0 7px;
+  color: var(--teal-dark);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .admin-media-section {
   min-width: 0;
   padding: 18px;
@@ -3199,7 +3219,7 @@ summary:focus-visible {
 
   .admin-sidebar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-columns: minmax(0, 1fr) repeat(4, auto);
     gap: 7px;
     align-items: center;
     padding: 9px 13px;
@@ -3244,7 +3264,7 @@ summary:focus-visible {
   }
 
   .admin-sidebar {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   }
 
   .admin-sidebar > div {
@@ -3306,6 +3326,10 @@ summary:focus-visible {
 
   .admin-media-section {
     padding: 13px;
+  }
+
+  .admin-timeline-links {
+    padding: 12px 13px 15px;
   }
 
   .admin-media-heading {

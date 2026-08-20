@@ -10,6 +10,16 @@ source = source
     "import { DEFAULT_RESUME_URL } from '../data/profile';",
     "const DEFAULT_RESUME_URL = '/SydneyBaoResume.pdf';",
   )
+  .replace(
+    `import {
+  isValidTimelineEntryId,
+  slugifyTimelineEntryTitle,
+  validateTimelineEntry,
+} from './timelineContent';`,
+    `const isValidTimelineEntryId = (value) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) && value.length <= 64;
+const slugifyTimelineEntryTitle = (value) => String(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const validateTimelineEntry = (entry) => ({ ...entry, status: 'published' });`,
+  )
   .replaceAll('import.meta.env.VITE_FIREBASE_API_KEY', "'test-api-key'")
   .replaceAll('import.meta.env.VITE_FIREBASE_PROJECT_ID', "'test-project'")
   .replaceAll('import.meta.env.VITE_FIREBASE_OWNER_EMAIL', "'owner@example.com'");
@@ -32,6 +42,8 @@ let batchGetRequests = 0;
 let legacyDocumentGets = 0;
 let projectListRequests = 0;
 let deletionListRequests = 0;
+let timelineListRequests = 0;
+let timelineDeletionListRequests = 0;
 let identityRequests = 0;
 let clock = 0;
 
@@ -127,6 +139,20 @@ documents.set('portfolioContent/existing-project', {
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-02T00:00:00.000Z',
 });
+documents.set('portfolioTimeline/existing-milestone', {
+  id: 'existing-milestone',
+  kind: 'award',
+  title: 'Existing milestone',
+  status: 'published',
+  schemaVersion: 1,
+  revision: 2,
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-02T00:00:00.000Z',
+});
+documents.set('portfolioDeletedTimeline/old-milestone', {
+  id: 'old-milestone',
+  deletedAt: '2026-08-03T00:00:00.000Z',
+});
 
 globalThis.fetch = async (input, options = {}) => {
   const url = new URL(typeof input === 'string' ? input : input.url);
@@ -191,6 +217,21 @@ globalThis.fetch = async (input, options = {}) => {
         .filter(([path]) => path.startsWith('portfolioDeletedProjects/'))
         .map(([path, value]) => ({ document: firestoreDocument(path, value) })));
     }
+    if (collectionId === 'portfolioTimeline') {
+      timelineListRequests += 1;
+      assert.equal(payload.structuredQuery.where.fieldFilter.field.fieldPath, 'status');
+      assert.equal(payload.structuredQuery.where.fieldFilter.value.stringValue, 'published');
+      return json([...documents.entries()]
+        .filter(([path, value]) => path.startsWith('portfolioTimeline/') && value.status === 'published')
+        .map(([path, value]) => ({ document: firestoreDocument(path, value) })));
+    }
+    if (collectionId === 'portfolioDeletedTimeline') {
+      timelineDeletionListRequests += 1;
+      assert.equal(payload.structuredQuery.where, undefined);
+      return json([...documents.entries()]
+        .filter(([path]) => path.startsWith('portfolioDeletedTimeline/'))
+        .map(([path, value]) => ({ document: firestoreDocument(path, value) })));
+    }
     assert.fail(`Unexpected collection query: ${collectionId}`);
   }
 
@@ -220,9 +261,13 @@ const initial = await content.fetchPortfolioContent();
 assert.equal(initial.profile, null);
 assert.deepEqual(initial.projects.map(({ slug }) => slug), ['existing-project']);
 assert.deepEqual(initial.deletedProjectSlugs, []);
+assert.deepEqual(initial.timelineEntries.map(({ id }) => id), ['existing-milestone']);
+assert.deepEqual(initial.deletedTimelineEntryIds, ['old-milestone']);
 assert.equal(batchGetRequests, 1, 'the optional profile read should use batchGet');
 assert.equal(projectListRequests, 1);
 assert.equal(deletionListRequests, 1);
+assert.equal(timelineListRequests, 1);
+assert.equal(timelineDeletionListRequests, 1);
 assert.equal(legacyDocumentGets, 0, 'an absent profile should not emit an HTTP 404');
 
 await content.signInOwner('owner@example.com', 'test-password');
@@ -303,5 +348,62 @@ const afterDelete = await content.fetchPortfolioContent();
 assert.deepEqual(afterDelete.projects.map(({ slug }) => slug), ['new-project']);
 assert.deepEqual(afterDelete.deletedProjectSlugs, ['existing-project']);
 assert.equal(legacyDocumentGets, 0, 'optional content reads should not emit HTTP 404s');
+
+const timelineEntry = {
+  id: 'new-milestone',
+  kind: 'research',
+  title: 'New milestone',
+  organization: 'Northeastern University',
+  dateLabel: 'Aug 2026',
+  startDate: '2026-08',
+  sortDate: '2026-08',
+  years: [2026],
+  description: 'A timeline addition.',
+  highlights: ['Built safely.'],
+  relatedProjectSlug: '',
+  externalUrl: '',
+  externalLabel: '',
+  sourceUrl: 'https://www.linkedin.com/in/sydney-bao',
+};
+documents.set('portfolioDeletedTimeline/new-milestone', {
+  id: 'new-milestone',
+  deletedAt: '2026-08-04T00:00:00.000Z',
+});
+
+await content.saveTimelineEntryContent(timelineEntry);
+assert.equal(commits.length, 4);
+assert.equal(commits[3].writes.length, 2, 'timeline saves must also clear stale tombstones');
+assert.equal(
+  commits[3].writes[0].update.name,
+  `${databasePath}/documents/portfolioTimeline/new-milestone`,
+);
+assert.equal(
+  commits[3].writes[1].delete,
+  `${databasePath}/documents/portfolioDeletedTimeline/new-milestone`,
+);
+assert.equal(documents.get('portfolioTimeline/new-milestone').revision, 1);
+assert.equal(documents.get('portfolioDeletedTimeline/new-milestone'), undefined);
+
+const commitsBeforeInvalidTimelineDelete = commits.length;
+await assert.rejects(
+  content.deleteTimelineEntryContent('../new-milestone'),
+  /valid timeline entry/i,
+);
+assert.equal(commits.length, commitsBeforeInvalidTimelineDelete);
+
+await content.deleteTimelineEntryContent('new-milestone');
+assert.equal(commits.length, 5);
+assert.equal(commits[4].writes.length, 2);
+assert.equal(
+  commits[4].writes[0].delete,
+  `${databasePath}/documents/portfolioTimeline/new-milestone`,
+);
+assert.equal(
+  commits[4].writes[1].update.name,
+  `${databasePath}/documents/portfolioDeletedTimeline/new-milestone`,
+);
+assert.equal(documents.has('portfolioTimeline/new-milestone'), false);
+assert.equal(documents.get('portfolioDeletedTimeline/new-milestone').id, 'new-milestone');
+assert.equal(typeof documents.get('portfolioDeletedTimeline/new-milestone').deletedAt, 'string');
 
 console.log('Firebase content adapter tests passed');

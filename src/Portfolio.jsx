@@ -525,6 +525,7 @@ function Portfolio({
   onViewChange,
   projects,
   social,
+  timelineEntries,
   view,
 }) {
   const [selectedProjectSlug, setSelectedProjectSlug] = useState(null);
@@ -745,6 +746,7 @@ function Portfolio({
       >
         <Timeline
           availableProjectSlugs={availableProjectSlugs}
+          entries={timelineEntries}
           onOpenProject={openRelatedProject}
         />
       </div>
